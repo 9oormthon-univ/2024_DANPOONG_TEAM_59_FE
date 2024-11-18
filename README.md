@@ -1,2 +1,2 @@
 # 2024_DANPOONG_TEAM_59_FE
-다:품
+[KAKAO X GOORM] 다:품

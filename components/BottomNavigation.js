@@ -31,12 +31,12 @@ const BottomNavigation = ({ navigation, currentRoute }) => {
 
       <TouchableOpacity
         style={styles.navItem}
-        onPress={() => navigation.navigate("Chat")}
+        onPress={() => navigation.navigate("ChatScreen")}
       >
         <Icon
           name="chat"
           size={24}
-          color={currentRoute === "Chat" ? "#000" : "#666"}
+          color={currentRoute === "ChatScreen" ? "#000" : "#666"}
         />
         <Text style={styles.navText}>채팅</Text>
       </TouchableOpacity>
@@ -77,6 +77,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: "#eee",
+    marginBottom: 12,
   },
   navItem: {
     alignItems: "center",

@@ -13,6 +13,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import MyPage from "./screens/MyPage";
 import Policy from "./screens/Policy";
 import PolicyDetail from "./screens/PolicyDetail";
+import LikedPosts from "./screens/LikedPosts";
+import ChatScreen from "./screens/ChatScreen";
 
 const Stack = createStackNavigator();
 
@@ -226,6 +228,16 @@ function StackScreen() {
           },
           headerTintColor: "black",
         }}
+      />
+      <Stack.Screen
+        name="LikedPosts"
+        component={LikedPosts}
+        options={{ headerShown: true }}
+      />
+      <Stack.Screen
+        name="ChatScreen"
+        component={ChatScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

@@ -25,18 +25,41 @@ const EditPost = ({ route }) => {
   useEffect(() => {
     const loadPost = async () => {
       try {
-        const savedPosts = await AsyncStorage.getItem("posts");
-        if (savedPosts) {
-          const posts = JSON.parse(savedPosts);
-          const post = posts.find((p) => p.id === postId);
-          if (post) {
-            setTitle(post.title);
-            setContent(post.content);
-            setSelectedTag(post.tag);
-          }
+        const jwtToken = await AsyncStorage.getItem("jwtToken");
+
+        if (!jwtToken) {
+          Alert.alert("인증 오류", "로그인이 필요합니다.");
+          navigation.navigate("KakaoLogin");
+          return;
         }
+
+        const response = await fetch(
+          `http://192.168.61.45:8080/api/posts/${postId}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${jwtToken}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            Alert.alert("인증 만료", "다시 로그인해주세요.");
+            navigation.navigate("KakaoLogin");
+            return;
+          }
+          throw new Error("게시글을 불러오는데 실패했습니다");
+        }
+
+        const post = await response.json();
+        setTitle(post.title);
+        setContent(post.content);
+        setSelectedTag(`#${post.tags[0]}`);
       } catch (error) {
         console.error("게시글 로딩 에러:", error);
+        Alert.alert("오류", "게시글을 불러오는데 실패했습니다");
       }
     };
 
@@ -50,29 +73,45 @@ const EditPost = ({ route }) => {
     }
 
     try {
-      const savedPosts = await AsyncStorage.getItem("posts");
-      if (savedPosts) {
-        const posts = JSON.parse(savedPosts);
-        const postIndex = posts.findIndex((p) => p.id === postId);
+      const jwtToken = await AsyncStorage.getItem("jwtToken");
 
-        if (postIndex !== -1) {
-          posts[postIndex] = {
-            ...posts[postIndex],
-            title,
-            content,
-            tag: selectedTag,
-            updatedAt: new Date().toISOString(),
-          };
-
-          await AsyncStorage.setItem("posts", JSON.stringify(posts));
-          Alert.alert("성공", "게시글이 수정되었습니다.", [
-            {
-              text: "확인",
-              onPress: () => navigation.goBack(),
-            },
-          ]);
-        }
+      if (!jwtToken) {
+        Alert.alert("인증 오류", "로그인이 필요합니다.");
+        navigation.navigate("KakaoLogin");
+        return;
       }
+
+      const response = await fetch(
+        `http://192.168.61.45:8080/api/posts/${postId}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${jwtToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: title.trim(),
+            content: content.trim(),
+            tags: [selectedTag.replace("#", "")],
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          Alert.alert("인증 만료", "다시 로그인해주세요.");
+          navigation.navigate("KakaoLogin");
+          return;
+        }
+        throw new Error("게시글 수정에 실패했습니다");
+      }
+
+      Alert.alert("성공", "게시글이 수정되었습니다.", [
+        {
+          text: "확인",
+          onPress: () => navigation.goBack(),
+        },
+      ]);
     } catch (error) {
       console.error("게시글 수정 에러:", error);
       Alert.alert("오류", "게시글 수정에 실패했습니다.");

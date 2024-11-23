@@ -25,12 +25,56 @@ const Board = ({ navigation }) => {
   // 게시글 불러오기
   const loadPosts = async () => {
     try {
-      const savedPosts = await AsyncStorage.getItem("posts");
-      if (savedPosts) {
-        setPosts(JSON.parse(savedPosts));
+      const jwtToken = await AsyncStorage.getItem("jwtToken");
+      console.log("1. 사용중인 JWT 토큰:", jwtToken);
+
+      if (!jwtToken) {
+        console.log("JWT 토큰이 없습니다.");
+        navigation.navigate("KakaoLogin");
+        return;
       }
+
+      const baseUrl = "http://192.168.61.45:8080/api/posts";
+      console.log("2. 요청 URL:", baseUrl);
+
+      const response = await fetch(baseUrl, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwtToken}`,
+        },
+      });
+
+      console.log("3. 서버 응답 상태:", response.status);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.log("인증 오류 발생");
+          navigation.navigate("KakaoLogin");
+          return;
+        }
+        throw new Error(`서버 응답 오류: ${response.status}`);
+      }
+
+      const responseText = await response.text();
+      console.log("4. 서버 응답 원본:", responseText);
+
+      const data = JSON.parse(responseText);
+      console.log("5. 파싱된 데이터:", data);
+
+      // 서버에서 받은 데이터에 nickname이 포함되어 있는지 확인
+      if (Array.isArray(data)) {
+        console.log("게시글 데이터 예시:", data[0]); // 첫 번째 게시글 데이터 로깅
+        setPosts(data);
+      } else if (data.content && Array.isArray(data.content)) {
+        console.log("게시글 데이터 예시:", data.content[0]); // 첫 번째 게시글 데이터 로깅
+        setPosts(data.content);
+      }
+
+      console.log("9. 최종 설정된 posts 길이:", posts.length);
     } catch (error) {
-      console.error("게시글 로딩 에러:", error);
+      console.error("게시글 로딩 중 오류 발생:", error);
+      Alert.alert("게시글 로딩 실패", "게시글을 불러오는데 실패했습니다.");
     }
   };
 
@@ -54,100 +98,116 @@ const Board = ({ navigation }) => {
     }
   }, [isFocused]);
 
-  // 좋아요 토글 함수
+  // 좋아요 토글 함수 수정
   const toggleLike = async (postId) => {
     try {
-      const updatedPosts = posts.map((post) => {
-        if (post.id === postId) {
-          // 이미 좋아요를 눌렀다면 취소, 아니면 좋아요 추가
-          const newLikes = likedPosts.has(postId)
-            ? post.likes - 1
-            : post.likes + 1;
-          return { ...post, likes: newLikes };
-        }
-        return post;
-      });
+      const jwtToken = await AsyncStorage.getItem("jwtToken");
 
-      // 좋아요 상태 업데이트
-      const newLikedPosts = new Set(likedPosts);
-      if (likedPosts.has(postId)) {
-        newLikedPosts.delete(postId);
-      } else {
-        newLikedPosts.add(postId);
+      if (!jwtToken) {
+        Alert.alert("오류", "로그인이 필요합니다.");
+        return;
       }
 
-      // AsyncStorage에 업데이트된 정보 저장
-      await AsyncStorage.setItem("posts", JSON.stringify(updatedPosts));
-      await AsyncStorage.setItem(
-        "likedPosts",
-        JSON.stringify([...newLikedPosts])
+      const response = await fetch(
+        `http://192.168.61.45:8080/api/postLikes/${postId}/likes/toggle`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${jwtToken}`,
+          },
+        }
       );
 
-      // 상태 업데이트
-      setPosts(updatedPosts);
-      setLikedPosts(newLikedPosts);
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error("좋아요 실패 응답:", errorData);
+
+        if (response.status === 401) {
+          Alert.alert("오류", "로그인이 만료되었습니다. 다시 로그인해주세요.");
+          navigation.navigate("KakaoLogin");
+          return;
+        }
+
+        throw new Error(`좋아요 업데이트 실패 (${response.status})`);
+      }
+
+      // 성공 시에만 게시글 목록 새로고침
+      await loadPosts();
     } catch (error) {
       console.error("좋아요 업데이트 에러:", error);
+      Alert.alert("오류", "좋아요 업데이트에 실패했습니다. 다시 시도해주세요.");
     }
   };
 
   // 검색과 태그 필터링
   const filteredPosts = posts.filter((post) => {
+    if (!post || !post.title) return false;
+
     const matchesSearch = post.title
       .toLowerCase()
       .includes(searchText.toLowerCase());
-    const matchesTag = selectedTag === "전체" || post.tag === selectedTag;
+
+    const matchesTag =
+      selectedTag === "전체" ||
+      (post.tags &&
+        Array.isArray(post.tags) &&
+        post.tags.includes(selectedTag.replace("#", "")));
+
     return matchesSearch && matchesTag;
   });
 
   // 게시글 렌더링
   const renderItem = ({ item }) => {
-    // 날짜 포맷팅 함수
+    if (!item || !item.postId || !item.title) return null;
+
+    // 날짜 포맷팅 함수 수정
     const formatDate = (dateString) => {
+      if (!dateString) return "";
       const date = new Date(dateString);
       const year = date.getFullYear();
-      const month = date.getMonth() + 1;
-      const day = date.getDate();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
       return `${year}.${month}.${day}`;
     };
 
     return (
       <TouchableOpacity
         style={styles.postItem}
-        onPress={() => {
-          if (item?.id) {
-            navigation.navigate("PostDetail", { postId: item.id });
-          } else {
-            Alert.alert("오류", "게시글 ID가 없습니다.");
-          }
-        }}
+        onPress={() =>
+          navigation.navigate("PostDetail", { postId: item.postId })
+        }
       >
         <Text style={styles.title}>{item.title}</Text>
         <View style={styles.tagContainer}>
-          <Text style={styles.tag}>{item.tag}</Text>
+          {(item.tags || []).map((tag, index) => (
+            <Text key={index} style={styles.tag}>
+              #{tag}
+            </Text>
+          ))}
         </View>
         <View style={styles.postInfo}>
           <View style={styles.leftInfo}>
-            <Text style={styles.author}>{item.author}</Text>
-            <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
+            <Text style={styles.author}>{item.nickname || "알 수 없음"}</Text>
+            <Text style={styles.date}>{formatDate(item.updatedAt)}</Text>
           </View>
           <View style={styles.interactionContainer}>
-            <TouchableOpacity style={styles.interactionButton}>
+            <View style={styles.interactionButton}>
               <Icon name="chat-bubble-outline" size={20} color="#666" />
               <Text style={styles.interactionText}>
-                {item.comments?.length || 0}
+                {item.commentCount || 0}
               </Text>
-            </TouchableOpacity>
+            </View>
             <TouchableOpacity
               style={styles.interactionButton}
-              onPress={() => toggleLike(item.id)}
+              onPress={() => toggleLike(item.postId)}
             >
               <Icon
-                name={likedPosts.has(item.id) ? "favorite" : "favorite-border"}
+                name={item.isLiked ? "favorite" : "favorite-border"}
                 size={20}
-                color={likedPosts.has(item.id) ? "#ff6b6b" : "#666"}
+                color={item.isLiked ? "#ff6b6b" : "#666"}
               />
-              <Text style={styles.interactionText}>{item.likes || 0}</Text>
+              <Text style={styles.interactionText}>{item.likeCount || 0}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -198,7 +258,7 @@ const Board = ({ navigation }) => {
         <FlatList
           data={filteredPosts}
           renderItem={renderItem}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.postId.toString()}
           contentContainerStyle={styles.listContainer}
         />
 
@@ -312,8 +372,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   tag: {
-    fontSize: 12,
+    fontSize: 14,
     color: "#666",
+    backgroundColor: "#FFEDAE",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   content: {
     flex: 1,

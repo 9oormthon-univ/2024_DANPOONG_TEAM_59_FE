@@ -2,216 +2,291 @@ import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
-  TextInput,
-  Button,
   StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  Alert,
   ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Icon from "react-native-vector-icons/MaterialIcons";
 
 const PostDetail = ({ route, navigation }) => {
   const { postId } = route.params;
   const [post, setPost] = useState(null);
-  const [comments, setComments] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState("");
-  const [currentUser, setCurrentUser] = useState(null);
+  const [comments, setComments] = useState([]);
+  const [userNickname, setUserNickname] = useState(null);
 
   useEffect(() => {
-    const loadPost = async () => {
-      try {
-        const savedPosts = await AsyncStorage.getItem("posts");
-        if (savedPosts) {
-          const posts = JSON.parse(savedPosts);
-          const selectedPost = posts.find((p) => p.id === postId);
-          if (selectedPost) {
-            selectedPost.date = selectedPost.date || new Date().toISOString();
-            setPost(selectedPost);
-            setComments(selectedPost.comments || []);
-          }
-        }
-      } catch (error) {
-        console.error("게시글 로딩 에러:", error);
-      }
+    loadPostDetail();
+    loadComments();
+    const getUserNickname = async () => {
+      const nickname = await AsyncStorage.getItem("userNickname");
+      setUserNickname(nickname);
     };
-
-    loadPost();
+    getUserNickname();
   }, [postId]);
 
-  useEffect(() => {
-    const loadUserInfo = async () => {
-      try {
-        const userNickname = await AsyncStorage.getItem("userNickname");
-        setCurrentUser(userNickname);
-      } catch (error) {
-        console.error("사용자 정보 로딩 에러:", error);
+  const loadPostDetail = async () => {
+    try {
+      const jwtToken = await AsyncStorage.getItem("jwtToken");
+
+      if (!jwtToken) {
+        Alert.alert("인증 오류", "로그인이 필요합니다.");
+        navigation.navigate("KakaoLogin");
+        return;
       }
-    };
 
-    loadUserInfo();
-  }, []);
-
-  const addComment = async () => {
-    if (newComment.trim()) {
-      try {
-        const userNickname = await AsyncStorage.getItem("userNickname");
-
-        const now = new Date();
-        const formattedDate = `${now.toLocaleDateString(
-          "ko-KR"
-        )} ${now.getHours()}:${String(now.getMinutes()).padStart(2, "0")}`;
-
-        const newCommentObj = {
-          text: newComment,
-          author: userNickname || "익명",
-          date: formattedDate,
-        };
-
-        const updatedComments = [...comments, newCommentObj];
-        setComments(updatedComments);
-        setNewComment("");
-
-        // AsyncStorage에 댓글 저장
-        const savedPosts = await AsyncStorage.getItem("posts");
-        if (savedPosts) {
-          const posts = JSON.parse(savedPosts);
-          const postIndex = posts.findIndex((p) => p.id === postId);
-
-          if (postIndex !== -1) {
-            posts[postIndex].comments = updatedComments;
-            await AsyncStorage.setItem("posts", JSON.stringify(posts));
-          }
+      const response = await fetch(
+        `http://192.168.61.45:8080/api/posts/${postId}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${jwtToken}`,
+            "Content-Type": "application/json",
+          },
         }
-      } catch (error) {
-        console.error("댓글 추가 중 오류 발생:", error);
+      );
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          Alert.alert("인증 만료", "다시 로그인해주세요.");
+          navigation.navigate("KakaoLogin");
+          return;
+        }
+        throw new Error("게시글을 불러오는데 실패했습니다.");
       }
+
+      const data = await response.json();
+      setPost(data);
+      setComments(data.comments || []);
+    } catch (error) {
+      console.error("게시글 상세 정보 로딩 에러:", error);
+      Alert.alert("오류", "게시글을 불러오는데 실패했습니다.");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const deleteComment = async (index) => {
-    const commentAuthor = comments[index].author;
+  const loadComments = async () => {
+    try {
+      const jwtToken = await AsyncStorage.getItem("jwtToken");
 
-    if (commentAuthor !== currentUser) {
-      Alert.alert("권한 없음", "자신이 작성한 댓글만 삭제할 수 있습니다.");
+      const response = await fetch(
+        `http://192.168.61.45:8080/api/posts/${postId}/comments`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${jwtToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("댓글을 불러오는데 실패했습니다.");
+      }
+
+      const data = await response.json();
+      setComments(data);
+    } catch (error) {
+      console.error("댓글 로딩 에러:", error);
+      Alert.alert("오류", "댓글을 불러오는데 실패했습니다.");
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!newComment.trim()) {
+      Alert.alert("알림", "댓글 내용을 입력해주세요.");
       return;
     }
 
-    Alert.alert("댓글 삭제", "정말로 이 댓글을 삭제하시겠습니까?", [
-      {
-        text: "취소",
-        style: "cancel",
-      },
-      {
-        text: "삭제",
-        style: "destructive",
-        onPress: async () => {
-          const updatedComments = comments.filter((_, i) => i !== index);
-          setComments(updatedComments);
+    try {
+      const jwtToken = await AsyncStorage.getItem("jwtToken");
 
-          try {
-            const savedPosts = await AsyncStorage.getItem("posts");
-            if (savedPosts) {
-              const posts = JSON.parse(savedPosts);
-              const postIndex = posts.findIndex((p) => p.id === postId);
-              if (postIndex !== -1) {
-                posts[postIndex].comments = updatedComments;
-                await AsyncStorage.setItem("posts", JSON.stringify(posts));
-              }
-            }
-          } catch (error) {
-            console.error("댓글 삭제 에러:", error);
-          }
-        },
-      },
-    ]);
+      const response = await fetch(
+        `http://192.168.61.45:8080/api/posts/${postId}/comments`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${jwtToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            content: newComment.trim(),
+            postId: postId,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          Alert.alert("인증 만료", "다시 로그인해주세요.");
+          navigation.navigate("KakaoLogin");
+          return;
+        }
+        throw new Error("댓글 작성에 실패했습니다.");
+      }
+
+      // 댓글 작성 성공
+      setNewComment(""); // 입력 초기화
+      loadComments(); // 댓글 목록 새로고침
+      Alert.alert("성공", "댓글이 등록되었습니다.");
+    } catch (error) {
+      console.error("댓글 작성 에러:", error);
+      Alert.alert("오류", "댓글 작성에 실패했습니다.");
+    }
   };
 
+  const handleDeleteComment = async (commentId) => {
+    try {
+      const jwtToken = await AsyncStorage.getItem("jwtToken");
+
+      Alert.alert("댓글 삭제", "정말로 이 댓글을 삭제하시겠습니까?", [
+        {
+          text: "취소",
+          style: "cancel",
+        },
+        {
+          text: "삭제",
+          onPress: async () => {
+            try {
+              const response = await fetch(
+                `http://192.168.61.45:8080/api/posts/${postId}/comments/${commentId}`,
+                {
+                  method: "DELETE",
+                  headers: {
+                    Authorization: `Bearer ${jwtToken}`,
+                    "Content-Type": "application/json",
+                  },
+                }
+              );
+
+              if (!response.ok) {
+                if (response.status === 401) {
+                  Alert.alert("인증 만료", "다시 로그인해주세요.");
+                  navigation.navigate("KakaoLogin");
+                  return;
+                }
+                throw new Error("댓글 삭제에 실패했습니다.");
+              }
+
+              // 댓글 목록 새로고침
+              loadComments();
+              Alert.alert("성공", "댓글이 삭제되었습니다.");
+            } catch (error) {
+              console.error("댓글 삭제 에러:", error);
+              Alert.alert("오류", "댓글 삭제에 실패했습니다.");
+            }
+          },
+          style: "destructive",
+        },
+      ]);
+    } catch (error) {
+      console.error("댓글 삭제 에러:", error);
+      Alert.alert("오류", "댓글 삭제에 실패했습니다.");
+    }
+  };
+
+  const renderComments = () => (
+    <View style={styles.commentsSection}>
+      <Text style={styles.commentHeader}>댓글 {comments.length}개</Text>
+      {comments.map((comment, index) => (
+        <View key={index} style={styles.commentItem}>
+          <View style={styles.commentHeader}>
+            <View style={styles.commentAuthorContainer}>
+              <Text style={styles.commentAuthor}>{comment.nickname}</Text>
+              <Text style={styles.commentDate}>
+                {formatDate(comment.updatedAt)}
+              </Text>
+            </View>
+            {userNickname === comment.nickname && (
+              <TouchableOpacity
+                onPress={() => handleDeleteComment(comment.commentId)}
+                style={styles.deleteButton}
+              >
+                <Icon name="delete-outline" size={20} color="#666" />
+              </TouchableOpacity>
+            )}
+          </View>
+          <Text style={styles.commentContent}>{comment.content}</Text>
+        </View>
+      ))}
+    </View>
+  );
+
+  // 날짜 포맷팅 함수 추가
+  const formatDate = (dateString) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${year}.${month}.${day} ${hours}:${minutes}`;
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#FFEDAE" />
+      </View>
+    );
+  }
+
   if (!post) {
-    return <Text>게시글을 불러오는 중입니다...</Text>;
+    return (
+      <View style={styles.container}>
+        <Text>게시글을 찾을 수 없습니다.</Text>
+      </View>
+    );
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.postContainer}>
-        <View style={styles.postContentWrapper}>
-          <ScrollView style={styles.postScrollView}>
-            <View style={styles.tagContainer}>
-              <Text style={styles.tag}>{post.tag}</Text>
-            </View>
-            <Text style={styles.title}>{post.title}</Text>
-            <Text style={styles.content}>{post.content}</Text>
-          </ScrollView>
-          <View style={styles.authorContainer}>
-            <View style={styles.authorDateContainer}>
-              <Text style={styles.author}>작성자: {post.author}</Text>
-              <Text style={styles.authorDateDivider}>|</Text>
-              <Text style={styles.date}>
-                {post.date
-                  ? new Date(post.date).toLocaleDateString("ko-KR", {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                      weekday: "short",
-                    }) +
-                    " " +
-                    new Date(post.date).toLocaleTimeString("ko-KR", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: false,
-                    })
-                  : "날짜 없음"}
-              </Text>
-            </View>
-          </View>
+      <ScrollView style={styles.content}>
+        <View style={styles.tagContainer}>
+          {post.tags?.map((tag, index) => (
+            <Text key={index} style={styles.tag}>
+              #{tag}
+            </Text>
+          ))}
         </View>
-      </View>
 
-      <View style={styles.divider} />
+        <Text style={styles.title}>{post.title}</Text>
 
-      <View style={styles.commentsContainer}>
-        <FlatList
-          data={comments}
-          keyExtractor={(item, index) => index.toString()}
-          renderItem={({ item, index }) => (
-            <View style={styles.commentContainer}>
-              <View style={styles.commentContent}>
-                <View style={styles.commentHeader}>
-                  <Text style={styles.commentText}>{item.text}</Text>
-                  {item.author === currentUser && (
-                    <TouchableOpacity
-                      style={styles.deleteButton}
-                      onPress={() => deleteComment(index)}
-                    >
-                      <Text style={styles.deleteButtonText}>×</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <View style={styles.commentInfo}>
-                  <Text style={styles.commentAuthor}>{item.author}</Text>
-                  <Text style={styles.commentDivider}>|</Text>
-                  <Text style={styles.commentDate}>{item.date}</Text>
-                </View>
-              </View>
-            </View>
-          )}
-          ListEmptyComponent={
-            <Text style={styles.noComments}>작성된 댓글이 없습니다.</Text>
-          }
-        />
-      </View>
+        <Text style={styles.postContent}>{post.content}</Text>
 
-      <View style={styles.inputContainer}>
+        <View style={styles.authorInfo}>
+          <Text style={styles.author}>{post.nickname}</Text>
+          <Text style={styles.date}>
+            {post.updatedAt ? formatDate(post.updatedAt) : "날짜 없음"}
+          </Text>
+        </View>
+
+        <View style={styles.divider} />
+
+        {renderComments()}
+      </ScrollView>
+
+      <View style={styles.commentInputContainer}>
         <TextInput
           style={styles.commentInput}
           value={newComment}
           onChangeText={setNewComment}
           placeholder="댓글을 입력하세요"
-          multiline={true}
+          multiline
+          maxLength={500}
         />
-        <TouchableOpacity style={styles.submitButton} onPress={addComment}>
-          <Text style={styles.submitButtonText}>작성</Text>
+        <TouchableOpacity
+          style={styles.commentSubmitButton}
+          onPress={handleAddComment}
+        >
+          <Text style={styles.commentSubmitText}>등록</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -223,197 +298,130 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#fff",
   },
-  postContainer: {
-    height: "40%",
-    borderBottomWidth: 0,
-    borderBottomColor: "#eee",
-  },
-  postContentWrapper: {
+  loadingContainer: {
     flex: 1,
-    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  postScrollView: {
+  content: {
+    flex: 1,
     padding: 16,
-    marginBottom: 40,
   },
   tagContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     marginBottom: 12,
-    marginTop: 8,
   },
   tag: {
     backgroundColor: "#FFEDAE",
-    borderRadius: 15,
-    paddingVertical: 6,
     paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
     marginRight: 8,
     marginBottom: 8,
     fontSize: 14,
-    color: "#333",
-    alignSelf: "flex-start",
   },
   title: {
     fontSize: 24,
     fontWeight: "bold",
     marginBottom: 16,
   },
-  content: {
-    fontSize: 16,
-    lineHeight: 24,
-    marginBottom: 16,
-  },
-  authorContainer: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 10,
-    backgroundColor: "#fff",
-  },
-  authorDateContainer: {
+  authorInfo: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 20,
+    paddingHorizontal: 4,
   },
   author: {
     fontSize: 14,
-    color: "#666",
-  },
-  authorDateDivider: {
-    fontSize: 14,
-    color: "#666",
-    marginHorizontal: 8,
+    color: "#333",
+    fontWeight: "bold",
   },
   date: {
-    fontSize: 14,
-    color: "#888",
+    fontSize: 12,
+    color: "#666",
   },
-  commentContainer: {
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#f5f5f5",
-    padding: 12,
-    backgroundColor: "#f5f5f5",
-    borderRadius: 10,
+  postContent: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: "#333",
+    marginBottom: 20,
   },
-  commentContent: {
-    flex: 1,
+  divider: {
+    height: 1,
+    backgroundColor: "#eee",
+    marginVertical: 20,
+  },
+  commentsSection: {
+    marginTop: 20,
+    paddingHorizontal: 16,
   },
   commentHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-  },
-  commentText: {
-    fontSize: 15,
-    flex: 1,
     marginBottom: 4,
   },
+  commentAuthorContainer: {
+    flex: 1,
+  },
   deleteButton: {
-    backgroundColor: "#ff3b30",
-    borderRadius: 12,
-    width: 24,
-    height: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 8,
+    padding: 4,
   },
-  deleteButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  noComments: {
-    fontSize: 16,
-    color: "#888",
-    textAlign: "center",
-    marginTop: 16,
-  },
-  commentInputContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  commentItem: {
+    backgroundColor: "#f8f8f8",
+    padding: 12,
+    borderRadius: 8,
     marginBottom: 8,
   },
-  commentInput: {
-    borderColor: "#FFEDAE",
-    borderRadius: 10,
-    borderWidth: 2,
-    paddingRight: 300,
-    paddingBottom: 20,
-    marginBottom: 1,
-  },
-  submitButton: {
-    backgroundColor: "#FFEDAE",
-    borderRadius: 10,
-    padding: 10,
-  },
-  submitButtonText: {
-    color: "black",
-  },
   commentAuthor: {
-    fontSize: 12,
-    color: "#666",
-    marginTop: 4,
-    textAlign: "left",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#ddd",
-    marginVertical: 16,
-    width: "100%",
-  },
-  commentsContainer: {
-    marginTop: 20,
-  },
-  inputContainer: {
-    borderTopWidth: 0,
-    padding: 16,
-    backgroundColor: "#fff",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    // 하단에 고정
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    marginBottom: 20,
-  },
-  commentInput: {
-    flex: 1,
-    borderColor: "#FFEDAE",
-    borderRadius: 10,
-    borderWidth: 2,
-    padding: 10,
-    marginRight: 10,
-    maxHeight: 100,
-  },
-  submitButton: {
-    backgroundColor: "#FFEDAE",
-    borderRadius: 10,
-    padding: 10,
-    width: 60,
-    alignItems: "center",
-  },
-  submitButtonText: {
-    color: "black",
-  },
-  commentInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 4,
-  },
-  commentAuthor: {
-    fontSize: 12,
-    color: "#666",
-  },
-  commentDivider: {
-    fontSize: 12,
-    color: "#666",
-    marginHorizontal: 8,
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#333",
   },
   commentDate: {
     fontSize: 12,
-    color: "#888",
+    color: "#666",
+    marginTop: 2,
+  },
+  commentContent: {
+    fontSize: 14,
+    color: "#333",
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  commentInputContainer: {
+    padding: 16,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  commentInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#FFEDAE",
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 8,
+    maxHeight: 100,
+    fontSize: 14,
+  },
+  commentSubmitButton: {
+    backgroundColor: "#FFEDAE",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  commentSubmitText: {
+    color: "#333",
+    fontWeight: "bold",
+    fontSize: 14,
   },
 });
 

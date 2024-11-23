@@ -34,33 +34,76 @@ const BoardNew = () => {
     }
 
     try {
-      // 저장된 닉네임 가져오기
+      // AsyncStorage에서 JWT 토큰과 닉네임 가져오기
+      const jwtToken = await AsyncStorage.getItem("jwtToken");
       const userNickname = await AsyncStorage.getItem("userNickname");
+      console.log("저장된 JWT 토큰:", jwtToken);
+      console.log("사용자 닉네임:", userNickname);
 
-      // 기존 게시글 가져오기
-      const existingPosts = await AsyncStorage.getItem("posts");
-      const posts = existingPosts ? JSON.parse(existingPosts) : [];
+      if (!jwtToken || !userNickname) {
+        Alert.alert("인증 오류", "로그인이 필요합니다.");
+        navigation.navigate("KakaoLogin");
+        return;
+      }
 
-      // 새 게시글 추가
-      const newPost = {
-        id: Date.now().toString(),
-        title,
-        content,
-        tag: selectedTag,
-        author: userNickname || "익명", // 저장된 닉네임 사용
-        createdAt: new Date().toISOString(),
-        likes: 0,
-        comments: [],
+      const baseUrl =
+        process.env.SERVER_URL || "http://192.168.61.45:8080/api/posts";
+
+      const postData = {
+        title: title.trim(),
+        content: content.trim(),
+        tags: [selectedTag.replace("#", "")],
+        nickname: userNickname,
+        memberId: await AsyncStorage.getItem("userId"),
       };
 
-      posts.unshift(newPost);
-      await AsyncStorage.setItem("posts", JSON.stringify(posts));
+      console.log("전송할 게시글 데이터:", postData);
 
-      Alert.alert("성공", "게시글이 등록되었습니다.");
-      navigation.goBack();
+      const response = await fetch(baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwtToken}`,
+          Accept: "application/json",
+        },
+        body: JSON.stringify(postData),
+      });
+
+      console.log("서버 응답 상태:", response.status);
+      const responseText = await response.text();
+      console.log("서버 응답 텍스트:", responseText);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          Alert.alert("인증 만료", "다시 로그인해주세요.");
+          navigation.navigate("KakaoLogin");
+          return;
+        }
+        throw new Error(`서버 응답 오류: ${response.status}`);
+      }
+
+      // 응답이 비어있지 않은 경우에만 JSON 파싱 시도
+      if (responseText && responseText.trim()) {
+        try {
+          const result = JSON.parse(responseText);
+          console.log("게시글 등록 성공:", result);
+        } catch (parseError) {
+          console.log("JSON 파싱 실패, 하지만 요청은 성공:", responseText);
+        }
+      }
+
+      // 성공 처리
+      Alert.alert("성공", "게시글이 등록되었습니다.", [
+        {
+          text: "확인",
+          onPress: () => {
+            navigation.goBack();
+          },
+        },
+      ]);
     } catch (error) {
-      console.error("Error adding post:", error);
-      Alert.alert("오류", "게시글 등록에 실패했습니다.");
+      console.error("게시글 등록 에러:", error);
+      Alert.alert("오류", "게시글 등록에 실패했습니다. 다시 시도해주세요.");
     }
   };
 

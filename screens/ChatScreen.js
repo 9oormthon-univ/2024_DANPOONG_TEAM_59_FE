@@ -15,6 +15,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useIsFocused } from "@react-navigation/native";
 import BottomNavigation from "../components/BottomNavigation";
 
+const formatDate = (dateString) => {
+  const date = new Date(dateString);
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}.${String(date.getDate()).padStart(2, "0")}`;
+};
+
 const ChatScreen = ({ navigation }) => {
   const [posts, setPosts] = useState([]);
   const [searchText, setSearchText] = useState("");
@@ -23,9 +31,31 @@ const ChatScreen = ({ navigation }) => {
   const [likedPosts, setLikedPosts] = useState(new Set());
   // 검색과 태그 필터링
   const filteredPosts = posts.filter((post) => {
+    const matchesSearch = post.title
+      .toLowerCase()
+      .includes(searchText.toLowerCase());
     const matchesTag = selectedTag === "전체" || post.tag === selectedTag;
     return matchesSearch && matchesTag;
   });
+
+  // 채팅방 데이터 불러오기
+  const loadPosts = async () => {
+    try {
+      const storedPosts = await AsyncStorage.getItem("chats");
+      if (storedPosts) {
+        setPosts(JSON.parse(storedPosts));
+      }
+    } catch (error) {
+      Alert.alert("오류", "채팅방 목록을 불러오는데 실패했습니다.");
+    }
+  };
+
+  // 화면이 포커스될 때마다 데이터 새로고침
+  useEffect(() => {
+    if (isFocused) {
+      loadPosts();
+    }
+  }, [isFocused]);
 
   // 게시글 렌더링
   const renderItem = ({ item }) => {
@@ -46,7 +76,6 @@ const ChatScreen = ({ navigation }) => {
         </View>
         <View style={styles.postInfo}>
           <View style={styles.leftInfo}>
-            <Text style={styles.author}>{item.author}</Text>
             <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
           </View>
           <View style={styles.interactionContainer}>
@@ -102,10 +131,10 @@ const ChatScreen = ({ navigation }) => {
         />
 
         <TouchableOpacity
-          style={styles.writeButton}
-          onPress={() => navigation.navigate("chatNew")}
+          style={styles.chatButton}
+          onPress={() => navigation.navigate("ChatNewScreen")}
         >
-          <Text style={styles.writeButtonText}>+채팅방</Text>
+          <Text style={styles.chatButtonText}>+채팅방</Text>
         </TouchableOpacity>
       </View>
 
@@ -134,56 +163,33 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   tagButton: {
-    width: 65,
-    height: 39,
-    borderRadius: 15,
+    width: 67,
+    height: 33,
+    borderRadius: 13,
     marginRight: 8,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "white",
+    borderWidth: 3,
+    borderColor: "#F4F4F4",
     justifyContent: "center",
     alignItems: "center",
   },
   selectedTagButton: {
-    backgroundColor: "#FFEDAE",
+    backgroundColor: "black",
   },
   tagText: {
     fontSize: 15,
-    color: "#666",
+    color: "black",
   },
   selectedTagText: {
-    color: "#000",
+    color: "white",
     fontWeight: "bold",
-  },
-  postItem: {
-    padding: 16,
-    backgroundColor: "#F4F4F4",
-    borderRadius: 10,
-    marginBottom: 30,
-    width: "90%",
-    alignSelf: "center",
   },
   title: {
     fontSize: 18,
     fontWeight: "800",
     marginBottom: 8,
   },
-  postInfo: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 30,
-  },
-  leftInfo: {
-    flexDirection: "column",
-    alignItems: "flex-start",
-    gap: 5,
-  },
-  author: {
-    color: "black",
-  },
-  date: {
-    color: "#666",
-  },
-  writeButton: {
+  chatButton: {
     position: "absolute",
     right: 20,
     bottom: 50,
@@ -191,7 +197,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 30,
   },
-  writeButtonText: {
+  chatButtonText: {
     color: "black",
     fontWeight: "bold",
   },

@@ -6,6 +6,7 @@ import {
   FlatList,
   TouchableOpacity,
   Image,
+  Alert,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -18,39 +19,32 @@ const LikedPosts = ({ navigation }) => {
 
   const loadLikedPosts = async () => {
     try {
-      const likedPostIds = await AsyncStorage.getItem("likedPosts");
-      const parsedLikedPosts = likedPostIds ? JSON.parse(likedPostIds) : [];
+      const jwtToken = await AsyncStorage.getItem("jwtToken");
+      if (!jwtToken) {
+        Alert.alert("알림", "로그인이 필요합니다.");
+        return;
+      }
 
-      // 서버나 로컬 데이터베이스에서 좋아요한 게시물의 전체 정보를 가져옵니다
-      // 예시: API 호출이나 데이터베이스 쿼리
-      const postsData = await fetchPostsByIds(parsedLikedPosts);
-      setLikedPosts(postsData);
+      const response = await fetch("http://192.168.61.45:8080/api/member", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${jwtToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setLikedPosts(data);
     } catch (error) {
-      console.error("좋아요 게시글 로딩 에러:", error);
-    }
-  };
-
-  // 게시물 ID 배열로 전체 게시물 정보를 가져오는 함수
-  const fetchPostsByIds = async (postIds) => {
-    try {
-      // 여기에 실제 API 호출 또는 데이터베이스 쿼리 로직을 구현하세요
-      // 예시 코드:
-      // const response = await fetch(`your-api-url/posts?ids=${postIds.join(',')}`);
-      // const data = await response.json();
-      // return data;
-
-      // 임시 더미 데이터 반환
-      return postIds.map((id) => ({
-        id,
-        title: `게시물 ${id}`,
-        content: "게시물 내용...",
-        image: "https://example.com/image.jpg",
-        date: `${new Date()}`,
-        likes: 10,
-      }));
-    } catch (error) {
-      console.error("게시물 데이터 가져오기 에러:", error);
-      return [];
+      console.error("좋아요 한 글 로딩 에러:", error);
+      Alert.alert(
+        "오류",
+        "좋아요 한 글을 불러오는데 실패했습니다. 네트워크 연결을 확인해주세요."
+      );
     }
   };
 

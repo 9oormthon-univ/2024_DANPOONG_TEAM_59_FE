@@ -10,7 +10,7 @@ const KaKaoLogin = () => {
       <Text style={Styles.MainText}>다:품에{"\n"}오신 것을 환영해요!</Text>
       <Image source={require("../assets/logo2.png")} style={Styles.logo2} />
       <TouchableOpacity
-        onPress={() => navigation.navigate("Nickname")}
+        onPress={() => navigation.navigate("kakao")}
         style={Styles.NextBottom}
       >
         <Image

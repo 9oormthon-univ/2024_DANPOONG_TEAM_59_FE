@@ -6,28 +6,143 @@ import {
   TouchableOpacity,
   TextInput,
   Image,
+  Alert,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const Nickname = ({ route }) => {
-  const { userData } = route.params || {};
-  const [nickname, setNickname] = useState(userData?.nickname || "");
+  const { userInfo, accessToken, jwtToken } = route.params || {};
+  const [nickname, setNickname] = useState(
+    userInfo?.kakao_account?.profile?.nickname || ""
+  );
   const [error, setError] = useState("");
 
   const navigation = useNavigation();
+
+  const updateNickname = async () => {
+    try {
+      const baseUrl =
+        process.env.SERVER_URL ||
+        "http://192.168.61.45:8080/api/member/nickname";
+
+      // AsyncStorage에서 토큰들을 가져옵니다
+      const kakaoToken = await AsyncStorage.getItem("kakaoToken");
+      const jwtToken = await AsyncStorage.getItem("jwtToken");
+      const userInfo = await AsyncStorage.getItem("userInfo");
+
+      if (!kakaoToken || !jwtToken) {
+        throw new Error("인증 토큰이 없습니다.");
+      }
+
+      const parsedUserInfo = userInfo ? JSON.parse(userInfo) : null;
+
+      // 요청 데이터 준비
+      const requestData = {
+        kakaoId: parsedUserInfo?.id,
+        nickname: nickname.trim(),
+        email: parsedUserInfo?.email,
+        profileImage: parsedUserInfo?.profileImage,
+      };
+
+      console.log("요청 URL:", baseUrl);
+      console.log("전송할 데이터:", requestData);
+      console.log("JWT 토큰:", jwtToken);
+      console.log("카카오 토큰:", kakaoToken);
+
+      const response = await fetch(baseUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwtToken}`,
+          "X-Kakao-Token": kakaoToken,
+          Accept: "application/json",
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      console.log("서버 응답 상태:", response.status);
+      const responseText = await response.text();
+      console.log("서버 응답 내용:", responseText);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("인증이 만료되었습니다. 다시 로그인해주세요.");
+        }
+
+        // 응답 텍스트가 JSON 형식인 경우 파싱
+        let errorMessage;
+        try {
+          const errorData = JSON.parse(responseText);
+          errorMessage = errorData.message || "닉네임 업데이트에 실패했습니다.";
+        } catch (e) {
+          errorMessage = responseText || "닉네임 업데이트에 실패했습니다.";
+        }
+        throw new Error(errorMessage);
+      }
+
+      // 닉네임을 AsyncStorage에 저장
+      await AsyncStorage.setItem("userNickname", nickname.trim());
+
+      // userInfo 업데이트
+      if (parsedUserInfo) {
+        parsedUserInfo.nickname = nickname.trim();
+        await AsyncStorage.setItem("userInfo", JSON.stringify(parsedUserInfo));
+      }
+
+      return responseText ? JSON.parse(responseText) : null;
+    } catch (error) {
+      console.error("닉네임 업데이트 상세 오류:", error);
+      throw error;
+    }
+  };
 
   const handleNext = async () => {
     if (!nickname.trim()) {
       setError("닉네임을 입력해주세요!");
       return;
     }
+
+    // 닉네임 유효성 검사
+    if (nickname.length < 2 || nickname.length > 10) {
+      setError("닉네임은 2자 이상 10자 이하로 입력해주세요.");
+      return;
+    }
+
+    if (!/^[가-힣a-zA-Z0-9]+$/.test(nickname)) {
+      setError("닉네임은 한글, 영문, 숫자만 사용 가능합니다.");
+      return;
+    }
+
     try {
-      await AsyncStorage.setItem("userNickname", nickname);
+      await updateNickname();
       setError("");
-      navigation.navigate("board");
+
+      Alert.alert("성공", "닉네임이 성공적으로 설정되었습니다.", [
+        {
+          text: "확인",
+          onPress: () => navigation.navigate("board"),
+        },
+      ]);
     } catch (error) {
-      console.error("닉네임 저장 오류:", error);
+      console.error("처리 중 오류 발생:", error);
+
+      if (error.message.includes("인증이 만료")) {
+        Alert.alert("인증 만료", "다시 로그인해주세요.", [
+          {
+            text: "확인",
+            onPress: () => navigation.navigate("KakaoLogin"),
+          },
+        ]);
+      } else {
+        setError(error.message);
+        Alert.alert("오류", error.message, [
+          {
+            text: "확인",
+            style: "cancel",
+          },
+        ]);
+      }
     }
   };
 

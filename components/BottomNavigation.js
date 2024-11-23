@@ -19,12 +19,12 @@ const BottomNavigation = ({ navigation, currentRoute }) => {
 
       <TouchableOpacity
         style={styles.navItem}
-        onPress={() => navigation.navigate("Support")}
+        onPress={() => navigation.navigate("assistInfo")}
       >
         <Icon
           name="info"
           size={24}
-          color={currentRoute === "Support" ? "#000" : "#666"}
+          color={currentRoute === "assistInfo" ? "#000" : "#666"}
         />
         <Text style={styles.navText}>지원정보</Text>
       </TouchableOpacity>
@@ -43,12 +43,12 @@ const BottomNavigation = ({ navigation, currentRoute }) => {
 
       <TouchableOpacity
         style={styles.navItem}
-        onPress={() => navigation.navigate("Childcare")}
+        onPress={() => navigation.navigate("ChildCare")}
       >
         <Icon
           name="child-care"
           size={24}
-          color={currentRoute === "Childcare" ? "#000" : "#666"}
+          color={currentRoute === "ChildCare" ? "#000" : "#666"}
         />
         <Text style={styles.navText}>자녀 돌봄</Text>
       </TouchableOpacity>

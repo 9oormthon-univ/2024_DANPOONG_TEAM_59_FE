@@ -45,16 +45,19 @@ const ChatHeader = ({
 const PostPreview = ({ postInfo }) => {
   if (!postInfo) return null;
 
+  console.log("PostPreview에 전달된 postInfo:", postInfo);
+
   const getTagStyle = (tag) => {
     switch (tag) {
-      case "긴급":
-        return styles.urgentTag;
+      case "돌봄":
+      case "돌봄지원":
+        return styles.recruitingTag;
       case "예약중":
         return styles.reservingTag;
-      case "구인완료":
+      case "거래완료":
         return styles.completedTag;
-      case "구인중":
-        return styles.recruitingTag;
+      case "긴급":
+        return styles.urgentTag;
       default:
         return styles.defaultTag;
     }
@@ -63,19 +66,24 @@ const PostPreview = ({ postInfo }) => {
   return (
     <View style={styles.postPreviewContainer}>
       <View style={styles.postPreviewContent}>
-        <Image source={{ uri: postInfo.thumbnail }} style={styles.thumbnail} />
         <View style={styles.postPreviewTextContainer}>
           <View style={styles.tagsRow}>
-            {postInfo.tags?.map((tag, index) => (
-              <Text key={index} style={[styles.tag, getTagStyle(tag)]}>
-                {tag}
+            {Array.isArray(postInfo.tags) &&
+              postInfo.tags.map((tag, index) => (
+                <Text key={index} style={[styles.tag, getTagStyle(tag)]}>
+                  {tag}
+                </Text>
+              ))}
+            {postInfo.tradeState && (
+              <Text style={[styles.tag, getTagStyle(postInfo.tradeState)]}>
+                {postInfo.tradeState}
               </Text>
-            ))}
-            <Text style={styles.postPreviewDate}>{postInfo.date}</Text>
+            )}
           </View>
           <Text style={styles.postPreviewTitle} numberOfLines={1}>
-            {postInfo.title}
+            {postInfo.title || "제목 없음"}
           </Text>
+          <Text style={styles.postPreviewDate}>{postInfo.date}</Text>
         </View>
       </View>
     </View>
@@ -85,10 +93,10 @@ const PostPreview = ({ postInfo }) => {
 const ChatNew = ({ navigation, route }) => {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
+  const [postInfo, setPostInfo] = useState(route.params?.postInfo);
   const scrollViewRef = useRef();
   const chatRoomId = route.params?.chatId;
   const userName = route.params?.userName || "김토끼";
-  const postInfo = route.params?.postInfo;
   const [otherMemberId, setOtherMemberId] = useState(null);
   const [transactionStatus, setTransactionStatus] = useState("진행중");
 
@@ -98,11 +106,66 @@ const ChatNew = ({ navigation, route }) => {
     }
   }, [chatRoomId]);
 
+  useEffect(() => {
+    const fetchPostInfo = async () => {
+      if ((!postInfo || !postInfo.title) && chatRoomId) {
+        try {
+          const jwtToken = await AsyncStorage.getItem("jwtToken");
+
+          // 채팅방 정보 조회
+          const chatResponse = await fetch(
+            `http://3.34.96.14:8080/api/chatrooms/${chatRoomId}`,
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${jwtToken}`,
+              },
+            }
+          );
+
+          if (!chatResponse.ok) {
+            throw new Error("채팅방 정보를 가져오는데 실패했습니다.");
+          }
+
+          const chatData = await chatResponse.json();
+          console.log("채팅방 데이터:", chatData);
+
+          // 채팅방 데이터에서 직접 정보 추출
+          const updatedPostInfo = {
+            id: chatData.id,
+            title: chatData.title,
+            tags: chatData.tag ? [chatData.tag] : [],
+            date: formatDate(chatData.updatedAt || new Date()),
+            authorName: chatData.otherUserName,
+            authorImage: chatData.otherProfileImage,
+            tradeState: chatData.tradeState,
+            // 썸네일은 채팅방 데이터에 없는 것 같아서 기본 이미지 사용
+            thumbnail: "https://via.placeholder.com/50",
+          };
+
+          console.log("업데이트된 postInfo:", updatedPostInfo);
+
+          // route.params 업데이트
+          if (route.params) {
+            route.params.postInfo = updatedPostInfo;
+          }
+          // 상태 업데이트
+          setPostInfo(updatedPostInfo);
+        } catch (error) {
+          console.error("채팅방 정보 조회 실패:", error);
+        }
+      }
+    };
+
+    fetchPostInfo();
+  }, [chatRoomId]);
+
   const loadMessages = async () => {
     try {
       const jwtToken = await AsyncStorage.getItem("jwtToken");
       if (!jwtToken) {
-        Alert.alert("알림", "로그인이 필요합니다.");
+        Alert.alert("알림", "로���인이 필요합니다.");
         navigation.navigate("KakaoLogin");
         return;
       }
@@ -148,7 +211,7 @@ const ChatNew = ({ navigation, route }) => {
 
       setMessages(formattedMessages);
     } catch (error) {
-      console.error("메시지 로드 실패:", error);
+      console.error("메시지 로드 실��:", error);
       Alert.alert("오류", "메시지를 로드하는데 실패했습니다.");
     }
   };
@@ -232,7 +295,7 @@ const ChatNew = ({ navigation, route }) => {
                 !isMyMessage && styles.otherMessageBubble,
               ]}
             >
-              <Text>{message.text}</Text>
+              <Text style={styles.messageText}>{message.text}</Text>
             </View>
             <Text style={styles.messageTime}>
               {new Date(message.createdAt).toLocaleTimeString("ko-KR", {
@@ -253,7 +316,7 @@ const ChatNew = ({ navigation, route }) => {
               })}
             </Text>
             <View style={[styles.messageBubble, styles.myMessageBubble]}>
-              <Text>{message.text}</Text>
+              <Text style={styles.myMessageText}>{message.text}</Text>
             </View>
           </View>
         )}
@@ -321,7 +384,7 @@ const ChatNew = ({ navigation, route }) => {
             onPress: () => navigation.navigate("Review", reviewParams),
           },
           {
-            text: "거래 상태 변경",
+            text: "거거래 상태 변경",
             onPress: showTransactionStatusOptions,
           },
           {
@@ -351,7 +414,7 @@ const ChatNew = ({ navigation, route }) => {
         }
       );
     } else {
-      Alert.alert("��래 상태 변경", "상태를 선택해주세요", [
+      Alert.alert("거래 상태 변경", "상태를 선택해주세요", [
         {
           text: "예약중",
           onPress: () => updateTransactionStatus("예약중"),
@@ -381,13 +444,14 @@ const ChatNew = ({ navigation, route }) => {
         return;
       }
 
+      // 요청 데이터 구조 수정
       const requestData = {
-        chatRoomId: chatRoomId,
-        receiverId: otherMemberId,
+        chatRoomId: parseInt(chatRoomId), // 숫�로 변환
+        receiverId: parseInt(otherMemberId), // 숫자로 변환
         tradeState: status,
       };
 
-      console.log("Request data:", requestData);
+      console.log("거래 상� 업데이트 요청 데이터:", requestData);
 
       const response = await fetch(
         `http://3.34.96.14:8080/api/chatrooms/trade-state`,
@@ -401,28 +465,39 @@ const ChatNew = ({ navigation, route }) => {
         }
       );
 
-      // 응답 텍스트를 먼저 확인
+      // 응답 텍인을 �한 로깅 추가
       const responseText = await response.text();
-      console.log("Raw server response:", responseText);
+      console.log("서버 응답:", {
+        status: response.status,
+        statusText: response.statusText,
+        responseText: responseText,
+      });
 
       if (!response.ok) {
-        const errorMessage = responseText
-          ? JSON.parse(responseText).message
-          : "거래 상태 업데이트에 실패했습니다.";
+        let errorMessage;
+        try {
+          const errorData = JSON.parse(responseText);
+          errorMessage =
+            errorData.message || "거래 상태 업데이트에 실패했습니다.";
+        } catch (e) {
+          errorMessage = "거래 상� 업데이트에 실패했습니다.";
+        }
         throw new Error(errorMessage);
       }
 
-      const responseData = responseText ? JSON.parse(responseText) : {};
-      console.log("Parsed server response:", responseData);
-
+      // 성공적으로 업��이트된 경우
       setTransactionStatus(status);
       Alert.alert("알림", `거래 상태가 ${status}(으)로 변경되었습니다.`);
 
-      if (status === "거래완��" && route.params?.postInfo?.id) {
+      // 거래완료� 경우 게시글 태그도 업데이트
+      if (status === "거래완료" && route.params?.postInfo?.id) {
         await updatePostTag(jwtToken, route.params.postInfo.id);
       }
+
+      // 상태 변경 � 채팅방 정보 새로고침
+      await loadMessages();
     } catch (error) {
-      console.error("거래 상태 업데이트 에러:", {
+      console.error("거래 상태 업데이트 �세 에러:", {
         message: error.message,
         name: error.name,
         stack: error.stack,
@@ -462,6 +537,15 @@ const ChatNew = ({ navigation, route }) => {
     }
   };
 
+  // 날짜 포맷팅 함수 추가
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}.${month}.${day}`;
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ChatHeader
@@ -489,7 +573,7 @@ const ChatNew = ({ navigation, route }) => {
         </ScrollView>
         <View style={styles.inputContainer}>
           <TouchableOpacity style={styles.addButton}>
-            <Ionicons name="add" size={24} color="#666" />
+            <Ionicons name="add" size={24} color="#E78B00" />
           </TouchableOpacity>
           <View style={styles.textInputContainer}>
             <TextInput
@@ -516,11 +600,11 @@ const ChatNew = ({ navigation, route }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#ffffff",
   },
   header: {
     height: 56,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#ffffff",
     borderBottomWidth: 0.5,
     borderBottomColor: "#E5E5EA",
     paddingHorizontal: 16,
@@ -547,7 +631,7 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#ffffff",
   },
   scrollViewContent: {
     padding: 16,
@@ -572,13 +656,13 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   messageBubble: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#f7f7f7",
     padding: 12,
     borderRadius: 12,
     maxWidth: "70%",
   },
   myMessageBubble: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#FFECA1",
     marginLeft: 8,
   },
   otherMessageBubble: {
@@ -594,7 +678,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 0.5,
     borderTopColor: "#E5E5EA",
     padding: 8,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#ffffff",
     flexDirection: "row",
     alignItems: "center",
   },
@@ -604,21 +688,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: 8,
-    backgroundColor: "#fff",
+    backgroundColor: "#FFECA1",
     borderRadius: 20,
   },
   textInputContainer: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#f7f7f7",
     borderRadius: 20,
     paddingHorizontal: 8,
   },
   textInput: {
     flex: 1,
-    minHeight: 36,
-    maxHeight: 100,
+    minHeight: 31,
+    maxHeight: 80,
     paddingHorizontal: 8,
   },
   sendButton: {
@@ -642,17 +726,23 @@ const styles = StyleSheet.create({
   },
   postPreviewTextContainer: {
     flex: 1,
+    justifyContent: "center",
   },
   tagsRow: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 4,
+    flexWrap: "wrap",
   },
   postPreviewTitle: {
     fontSize: 15,
     fontWeight: "600",
     color: "#000000",
     marginBottom: 4,
+  },
+  postPreviewDate: {
+    fontSize: 12,
+    color: "#666666",
   },
   tag: {
     fontSize: 12,
@@ -692,6 +782,12 @@ const styles = StyleSheet.create({
   },
   optionsButton: {
     padding: 8,
+  },
+  messageText: {
+    color: "#000000",
+  },
+  myMessageText: {
+    color: "#E78B00",
   },
 });
 

@@ -1,6 +1,5 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Image } from "react-native";
-import Icon from "react-native-vector-icons/MaterialIcons";
 import { useRoute } from "@react-navigation/native";
 
 const BottomNavigation = ({ navigation }) => {
@@ -15,10 +14,13 @@ const BottomNavigation = ({ navigation }) => {
         style={[styles.navItem]}
         onPress={() => navigation.navigate("board")}
       >
-        <Icon
-          name="home"
-          size={24}
-          color={currentRoute === "board" ? "#E78B00" : "#666"}
+        <Image
+          source={require("../assets/home.png")}
+          style={{
+            width: 30,
+            height: 30,
+            tintColor: currentRoute === "board" ? "#E78B00" : "#666",
+          }}
         />
         <Text
           style={[
@@ -34,10 +36,13 @@ const BottomNavigation = ({ navigation }) => {
         style={[styles.navItem]}
         onPress={() => navigation.navigate("assistInfo")}
       >
-        <Icon
-          name="info"
-          size={24}
-          color={currentRoute === "assistInfo" ? "#E78B00" : "#666"}
+        <Image
+          source={require("../assets/assist.png")}
+          style={{
+            width: 30,
+            height: 30,
+            tintColor: currentRoute === "assistInfo" ? "#E78B00" : "#666",
+          }}
         />
         <Text
           style={[
@@ -55,10 +60,13 @@ const BottomNavigation = ({ navigation }) => {
         style={[styles.navItem]}
         onPress={() => navigation.navigate("ChatScreen")}
       >
-        <Icon
-          name="chat"
-          size={24}
-          color={currentRoute === "ChatScreen" ? "#E78B00" : "#666"}
+        <Image
+          source={require("../assets/comment.png")}
+          style={{
+            width: 30,
+            height: 30,
+            tintColor: currentRoute === "ChatScreen" ? "#E78B00" : "#666",
+          }}
         />
         <Text
           style={[
@@ -100,10 +108,13 @@ const BottomNavigation = ({ navigation }) => {
         style={[styles.navItem]}
         onPress={() => navigation.navigate("MyPage")}
       >
-        <Icon
-          name="person"
-          size={24}
-          color={currentRoute === "MyPage" ? "#E78B00" : "#666"}
+        <Image
+          source={require("../assets/mypage.png")}
+          style={{
+            width: 30,
+            height: 30,
+            tintColor: currentRoute === "MyPage" ? "#E78B00" : "#666",
+          }}
         />
         <Text
           style={[

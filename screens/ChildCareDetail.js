@@ -120,7 +120,7 @@ const ChildCareDetail = ({ route, navigation }) => {
       setLoading(false);
     } catch (error) {
       console.error("게시글 상세 정보 로딩 에러:", error);
-      Alert.alert("오류", "게시글을 �� 실패했습니다.");
+      Alert.alert("오류", "게시글을 불러올 수 없습니다.");
       setLoading(false);
     }
   };
@@ -257,11 +257,13 @@ const ChildCareDetail = ({ route, navigation }) => {
         return;
       }
 
-      // API 요청 데이터 로깅
-      console.log("Sending request with data:", {
+      const requestData = {
         tag: "돌봄",
-        id: parseInt(carePostId),
-      });
+        id: Number(carePostId),
+        memberId: Number(comment.memberId),
+      };
+
+      console.log("채팅방 생성 요청 데이터:", requestData);
 
       const response = await fetch("http://3.34.96.14:8080/api/chatrooms", {
         method: "POST",
@@ -269,89 +271,31 @@ const ChildCareDetail = ({ route, navigation }) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${jwtToken}`,
         },
-        body: JSON.stringify({
-          tag: "돌봄",
-          id: parseInt(carePostId),
-        }),
+        body: JSON.stringify(requestData),
       });
 
-      // 응답 상태 및 데이터 로깅
-      console.log("Response Status:", response.status);
       const responseText = await response.text();
-      console.log("Response Text:", responseText);
+      console.log("서버 응답:", responseText);
 
       if (!response.ok) {
-        if (response.status === 500) {
-          console.error("서버 에러 응답:", responseText);
-          try {
-            const errorData = JSON.parse(responseText);
-            console.error("상세 에러 정보:", errorData);
-            throw new Error(
-              errorData.message || "서버 내부 오류가 발생했습니다."
-            );
-          } catch (e) {
-            throw new Error("서버 내부 오류가 발생했습니다.");
-          }
-        }
-
-        let errorMessage = "채팅방 생성에 실패했습니다.";
-        switch (response.status) {
-          case 400:
-            errorMessage = "잘못된 요청입니다. 입력값을 확인해주세요.";
-            break;
-          case 401:
-            errorMessage = "로그인이 만료되었습니다. 다시 로그인해주세요.";
-            navigation.navigate("KakaoLogin");
-            break;
-          case 403:
-            errorMessage = "권한이 없습니다.";
-            break;
-          case 404:
-            errorMessage = "게시글을 찾을 수 없습니다.";
-            break;
-          case 409:
-            // 이미 존재하는 채팅방 처리
-            try {
-              const data = JSON.parse(responseText);
-              if (data.chatRoomId) {
-                navigation.navigate("ChatNew", {
-                  chatId: data.chatRoomId,
-                  userName: comment.nickname,
-                  postInfo: {
-                    title: post.title,
-                    thumbnail:
-                      post.imageUrls?.[0] || "https://via.placeholder.com/50",
-                    tags: [post.tag],
-                    date: post.createdAt,
-                  },
-                });
-                return;
-              }
-            } catch (e) {
-              console.error("채팅방 ID 파싱 실패:", e);
-            }
-            errorMessage = "이미 존재하는 채팅방입니다.";
-            break;
-        }
-        throw new Error(errorMessage);
+        console.error("서버 응답 에러:", responseText);
+        throw new Error("채팅방 생성에 실패했습니다.");
       }
 
       let data;
       try {
         data = JSON.parse(responseText);
+        console.log("채팅방 생성 성공:", data);
       } catch (e) {
         console.error("JSON 파싱 에러:", e);
-        throw new Error("서버 응답을 처리하는데 실패했습니다.");
+        throw new Error("서버 응답을 처리할 수 없습니다.");
       }
 
-      if (!data.chatRoomId) {
-        throw new Error("채팅방 ID를 받지 못했습니다.");
-      }
-
-      // 채팅방으 이동
       navigation.navigate("ChatNew", {
         chatId: data.chatRoomId,
         userName: comment.nickname,
+        receiverId: comment.memberId,
+        otherMemberId: comment.memberId,
         postInfo: {
           title: post.title,
           thumbnail: post.imageUrls?.[0] || "https://via.placeholder.com/50",
@@ -361,7 +305,7 @@ const ChildCareDetail = ({ route, navigation }) => {
       });
     } catch (error) {
       console.error("채팅방 생성 에러:", error);
-      Alert.alert("오류", error.message || "채팅방을 생성하는데 실패했습니다.");
+      Alert.alert("오류", "채팅방을 생성하는데 실패했습니다.");
     }
   };
 
@@ -467,6 +411,7 @@ const ChildCareDetail = ({ route, navigation }) => {
         "reportedComments",
         JSON.stringify(reportedCommentsArray)
       );
+      Alert.alert("성공", "댓글 신고가 접수되었습니다.");
       Alert.alert("료", "댓글 신고가 접수되었습니다.");
     } catch (error) {
       console.error("글 신고 저장 오류:", error);
@@ -535,7 +480,7 @@ const ChildCareDetail = ({ route, navigation }) => {
         const currentTags = posts[postIndex].tags;
         const nonUrgentTags = currentTags.filter((tag) => tag !== "긴급");
 
-        // "긴급" 태그를 제외한 나머지 태그 변경
+        // "긴급" 태그를 제외한 나머지 태그그그그그그 변경
         posts[postIndex].tags = ["긴급", ...nonUrgentTags.map(() => newTag)];
         await AsyncStorage.setItem("carePosts", JSON.stringify(posts));
         setPost({
@@ -552,7 +497,7 @@ const ChildCareDetail = ({ route, navigation }) => {
     }
   };
 
-  // 태그 렌더링 부분 수정
+  // 태그 렌더링 ���분 수정
   const renderTags = () => {
     const tags = [];
     if (post.isEmergency) tags.push("긴급");
@@ -615,7 +560,7 @@ const ChildCareDetail = ({ route, navigation }) => {
 
       const userInfo = JSON.parse(userInfoString);
 
-      // 작성자만 수��/삭제 가능하도록 체크
+      // 작성자만 수정/삭제 가능하도록 체크
       if (post.memberId === userInfo.id) {
         Alert.alert("게시글 관리", "선택해주세요", [
           {

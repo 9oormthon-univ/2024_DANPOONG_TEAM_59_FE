@@ -125,9 +125,9 @@ const Chat = ({ navigation }) => {
   const [jwtToken, setJwtToken] = useState(null);
   const [postPreviews, setPostPreviews] = useState({});
 
-  // JWT 토큰 가져오기
+  // JWT 토큰 가져오기 채팅 목록 불러오기를 하나의 useEffect로 통합
   useEffect(() => {
-    const getToken = async () => {
+    const initializeChat = async () => {
       try {
         const token = await AsyncStorage.getItem("jwtToken");
         if (!token) {
@@ -136,116 +136,58 @@ const Chat = ({ navigation }) => {
           return;
         }
         setJwtToken(token);
-      } catch (error) {
-        console.error("토큰을 가져오는데 실패했습니다:", error);
-        Alert.alert("오류", "인증 정보를 확인하는데 실패했습니다.");
-      }
-    };
-    getToken();
-  }, []);
 
-  // 채팅 목록 불러오기
-  const loadChats = async () => {
-    if (!jwtToken) {
-      console.log("🚫 Error: JWT 토큰 없음");
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const response = await fetch("http://3.34.96.14:8080/api/chatrooms", {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${jwtToken}`,
-        },
-      });
-
-      // 응답 상태 코드 및 상세 정보 로깅
-      console.log(`📡 Response Status: ${response.status}`);
-      console.log(`📡 Response Status Text: ${response.statusText}`);
-
-      // 에러 응답 처리
-      if (!response.ok) {
-        const errorBody = await response.text();
-        console.error("🚨 Error Response:", {
-          status: response.status,
-          statusText: response.statusText,
-          body: errorBody,
+        // 토큰을 받자마자 바로 채팅 목록 불러오기
+        setIsLoading(true);
+        const response = await fetch("http://3.34.96.14:8080/api/chatrooms", {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
         });
 
-        switch (response.status) {
-          case 400:
-            console.error("🚨 400: 잘못된 요청");
-            Alert.alert("오류", "잘못된 요청입니다.");
-            break;
-          case 401:
-            console.error("🚨 401: 인증되지 않은 요청");
+        if (!response.ok) {
+          if (response.status === 401) {
             await AsyncStorage.removeItem("jwtToken");
-            Alert.alert("인증 오류", "다시 로그인해주세요.");
             navigation.navigate("Login");
-            break;
-          case 403:
-            console.error("🚨 403: 접근 권한 없음");
-            Alert.alert("권한 오류", "접근 권한이 없습니다.");
-            break;
-          case 404:
-            console.error("🚨 404: 리소스를 찾을 수 없음");
-            Alert.alert("오류", "요청한 정보를 찾을 수 없습니다.");
-            break;
-          case 500:
-            console.error("🚨 500: 서버 내부 오류");
-            Alert.alert(
-              "서버 오류",
-              "서버에 문제가 발생했습니다. 잠시 후 다시 시도해주세요."
-            );
-            break;
-          default:
-            console.error(`🚨 ${response.status}: 알 수 없는 오류`);
-            Alert.alert("오류", "알 수 없는 오류가 발생했습니다.");
+            return;
+          }
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const data = await response.json();
+        if (!Array.isArray(data)) {
+          console.error("서버 응답이 배열 형식이 아닙니다:", data);
+          return;
+        }
+
+        const formattedChats = data
+          .filter((chat) => chat && chat.chatRoomId)
+          .map((chat) => ({
+            chatId: chat.chatRoomId,
+            postId: chat.id,
+            nickname: chat.otherUserName || "알 수 없음",
+            profileImage: chat.otherProfileImage,
+            lastMessage: chat.lastMessage || "새로운 채팅방입니다",
+            lastMessageTime: chat.updatedAt || new Date().toISOString(),
+            tags: chat.tag ? [chat.tag] : [],
+            title: chat.title,
+            neighborhood: chat.otherUserNeighborhood,
+            unreadCount: chat.unreadMessageCount || 0,
+          }));
+
+        setChats(formattedChats);
+      } catch (error) {
+        console.error("채팅 초기화 실패:", error);
+        Alert.alert("오류", "채팅 목록을 불러오는데 실패했습니다.");
+      } finally {
+        setIsLoading(false);
       }
+    };
 
-      const text = await response.text();
-      console.log("📥 Received data length:", text.length);
-
-      let data;
-      try {
-        data = JSON.parse(text);
-        console.log("✅ Data successfully parsed");
-      } catch (parseError) {
-        console.error("🚨 JSON Parse Error:", parseError);
-        console.error("🚨 Raw data:", text);
-        throw new Error("JSON 파싱 오류");
-      }
-
-      const formattedChats = data.map((chat) => ({
-        chatId: chat.chatRoomId,
-        postId: chat.id,
-        nickname: chat.otherUserName,
-        profileImage: chat.otherProfileImage,
-        lastMessage: chat.lastMessage || "새로운 채팅방입니다",
-        lastMessageTime: chat.updatedAt,
-        tags: [chat.tag] || [],
-        title: chat.title,
-        neighborhood: chat.otherUserNeighborhood,
-        unreadCount: chat.unreadMessageCount,
-      }));
-
-      setChats(formattedChats);
-    } catch (error) {
-      console.error("채팅 목록을 불러오는데 실패했습니다:", error);
-      Alert.alert("오류", "채팅 목록을 불오는데 실패했습니다.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
     if (isFocused) {
-      loadChats();
+      initializeChat();
     }
   }, [isFocused]);
 
@@ -342,24 +284,6 @@ const Chat = ({ navigation }) => {
             contentContainerStyle={styles.listContainer}
           />
         )}
-
-        <TouchableOpacity
-          style={styles.writeButton}
-          onPress={() => navigation.navigate("ChatNewScreen")}
-        >
-          <View style={styles.writeButtonIcon}>
-            <Text style={[styles.writeButtonText, { fontSize: 40 }]}>+</Text>
-            <Text
-              style={[
-                styles.writeButtonText,
-                { fontSize: 12 },
-                { color: "#FFECA1" },
-              ]}
-            >
-              채팅
-            </Text>
-          </View>
-        </TouchableOpacity>
       </View>
 
       <BottomNavigation navigation={navigation} currentRoute="chat" />
@@ -625,27 +549,6 @@ const styles = StyleSheet.create({
   interactionText: {
     fontSize: 14,
     color: "#FE9F40",
-  },
-  writeButton: {
-    position: "absolute",
-    right: 20,
-    bottom: 20,
-    backgroundColor: "#FE9F40",
-    borderRadius: 50,
-    width: 80,
-    height: 80,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  writeButtonText: {
-    color: "#FFECA1",
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-  writeButtonIcon: {
-    flexDirection: "column",
-    alignItems: "center",
-    marginBottom: 8,
   },
   listContainer: {
     padding: 16,

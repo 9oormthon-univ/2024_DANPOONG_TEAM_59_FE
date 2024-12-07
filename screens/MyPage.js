@@ -269,7 +269,7 @@ const MyPage = ({ navigation }) => {
                 routes: [{ name: "KakaoLogin" }],
               });
             } catch (error) {
-              Alert.alert("오류", "회원��퇴 처리 중 문제가 발생했습니다.");
+              Alert.alert("오류", "회원탈퇴 처리 중 문제가 발생했습니다.");
             }
           },
         },
@@ -556,10 +556,28 @@ const MyPage = ({ navigation }) => {
               </Text>
             </TouchableOpacity>
           </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>포인트 얻기</Text>
+            <TouchableOpacity
+              style={styles.menuRow}
+              onPress={() => navigation.navigate("VideoReward")}
+            >
+              <Text style={styles.menuRowText}>영상보고 포인트 얻기</Text>
+              <Feather
+                name="play-circle"
+                size={20}
+                color="#FF9231"
+                style={styles.menuIcon}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
         <View style={styles.bottomPadding} />
       </ScrollView>
-      <BottomNavigation navigation={navigation} />
+      <View style={styles.bottomNavContainer}>
+        <BottomNavigation navigation={navigation} />
+      </View>
     </SafeAreaView>
   );
 };
@@ -723,7 +741,7 @@ const styles = StyleSheet.create({
     color: "red",
   },
   bottomPadding: {
-    paddingBottom: 60,
+    paddingBottom: 80,
   },
   loadingSpinner: {
     marginLeft: 10,
@@ -784,6 +802,13 @@ const styles = StyleSheet.create({
   userNickname: {
     fontSize: 16,
     color: "#666",
+  },
+  bottomNavContainer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "white",
   },
 });
 

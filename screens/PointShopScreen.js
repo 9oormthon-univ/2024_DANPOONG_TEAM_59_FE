@@ -14,7 +14,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import BottomNavigation from "../components/BottomNavigation";
 
 const PointShopScreen = ({ navigation, route }) => {
-  const [userPoints, setUserPoints] = useState(0);
+  const [userPoints, setUserPoints] = useState(1000);
   const [searchText, setSearchText] = useState("");
   const [items, setItems] = useState([]);
 
@@ -22,7 +22,11 @@ const PointShopScreen = ({ navigation, route }) => {
     const loadUserPoints = async () => {
       try {
         const points = await AsyncStorage.getItem("userPoints");
-        setUserPoints(points ? Number(points) : 0);
+        setUserPoints(points ? Number(points) : 1000);
+
+        if (!points) {
+          await AsyncStorage.setItem("userPoints", "1000");
+        }
       } catch (error) {
         console.error("포인트 로딩 에러:", error);
       }
@@ -94,8 +98,17 @@ const PointShopScreen = ({ navigation, route }) => {
   }, [searchText, items]);
 
   const handleExchange = async (productId, requiredPoints, title) => {
+    console.log("현재 보유 포인트:", userPoints);
+    console.log("필요한 포인트:", requiredPoints);
+    console.log("차액:", userPoints - requiredPoints);
+
     if (userPoints < requiredPoints) {
-      Alert.alert("포인트 부족", "포인트가 부족합니다.");
+      Alert.alert(
+        "포인트 부족",
+        `현재 포���트: ${userPoints}\n필요한 포인트: ${requiredPoints}\n부족한 포인트: ${
+          requiredPoints - userPoints
+        }`
+      );
       return;
     }
 
@@ -168,7 +181,7 @@ const PointShopScreen = ({ navigation, route }) => {
                 onPress: () => navigation.navigate("CouponWallet"),
               },
               {
-                text: "취소",
+                text: "��소",
                 style: "cancel",
               },
             ]);

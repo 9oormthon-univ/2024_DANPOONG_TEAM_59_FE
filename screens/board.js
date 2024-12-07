@@ -40,30 +40,33 @@ const Board = ({ navigation }) => {
   const [userNickname, setUserNickname] = useState("");
   const [jwtToken, setJwtToken] = useState(null);
 
-  // JWT 토큰 가져오기
+  // JWT 토큰과 게시글 로딩 관련 useEffect 수정
   useEffect(() => {
-    const getToken = async () => {
+    const getTokenAndLoadPosts = async () => {
       try {
         const token = await AsyncStorage.getItem("jwtToken");
+        console.log("저장된 토��:", token);
         if (!token) {
           Alert.alert("알림", "로그인이 필요한 서비스입니다.");
-          navigation.navigate("Login"); // 로그인 화면으로 이동
+          navigation.navigate("Login");
           return;
         }
         setJwtToken(token);
+        await loadPosts(token);
       } catch (error) {
         console.error("토큰을 가져오는데 실패했습니다:", error);
         Alert.alert("오류", "인증 정보를 확인하는데 실패했습니다.");
       }
     };
-    getToken();
-  }, []);
 
-  // 게시글 불러오기 함수 수정
-  const loadPosts = async () => {
-    if (!jwtToken) {
-      return; // 토큰이 없으면 요청하지 않음
+    if (isFocused) {
+      getTokenAndLoadPosts();
     }
+  }, [isFocused]);
+
+  // loadPosts 함수 수정
+  const loadPosts = async (token) => {
+    if (!token) return;
 
     setIsLoading(true);
     try {
@@ -71,35 +74,36 @@ const Board = ({ navigation }) => {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${jwtToken}`,
+          Authorization: `Bearer ${token}`,
         },
       });
 
+      console.log("서버 응답 �태:", response.status);
+      const responseData = await response.text();
+      console.log("서버 응답 ��이터:", responseData);
+
       if (response.status === 401) {
-        await AsyncStorage.removeItem("jwtToken"); // 토큰 삭제
+        await AsyncStorage.removeItem("jwtToken");
         Alert.alert("세션 만료", "다시 로그인해주세요.");
         navigation.navigate("Login");
         return;
       }
 
       if (!response.ok) {
-        if (response.status === 401) {
-          Alert.alert("인증 오류", "로그인이 필요합니다.");
-          return;
-        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
+      const data = JSON.parse(responseData);
       if (Array.isArray(data)) {
+        console.log("받아온 게시글 수:", data.length);
         setPosts(data);
       } else {
-        setPosts([]);
         console.error("서버 응답이 배열 형식이 아닙니다:", data);
+        setPosts([]);
       }
     } catch (error) {
       console.error("게시글을 불러오는데 실패했습니다:", error);
-      Alert.alert("오류", "게시글을 불러오는데 실패했니다.");
+      Alert.alert("오류", "게시글을 불러오는데 실패했�니다.");
       setPosts([]);
     } finally {
       setIsLoading(false);
@@ -114,7 +118,7 @@ const Board = ({ navigation }) => {
 
   // 프로필 정보 로딩 함수
   const loadUserProfile = () => {
-    // 임시 더미 데이터로 대체하거 API ���출로 변경 필요
+    // 임시 더미 데이터로 대체하거 API 호출로 변경 필요
     setUserProfileImage(null);
     setUserNickname("사용자");
   };
@@ -877,7 +881,7 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: "#F7F7F7",
     width: "100%",
-    marginBottom: 4, // 게시글 리스트와의 간격
+    marginBottom: 4, // 게시글 리리스트와의 간격
   },
 });
 

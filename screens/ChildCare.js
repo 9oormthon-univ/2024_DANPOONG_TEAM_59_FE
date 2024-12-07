@@ -240,7 +240,7 @@ const ChildCare = ({ navigation }) => {
 
   // 긴급 게시물 체크 및 알림 함수 수정
   const checkNewUrgentPosts = async (newPosts) => {
-    const urgentPosts = newPosts.filter((post) => post.tags?.includes("긴급"));
+    const urgentPosts = newPosts.filter((post) => post.isEmergency);
 
     if (urgentPosts.length > 0) {
       const latestUrgentPost = urgentPosts[0];
@@ -249,14 +249,21 @@ const ChildCare = ({ navigation }) => {
       );
 
       if (lastNotifiedId !== String(latestUrgentPost.carePostId)) {
-        // 푸시 알림과 함께 인앱 알림도 표시
+        // 푸시 알림 전송
+        await schedulePushNotification({
+          title: "새로운 긴급 돌봄 요청",
+          body: latestUrgentPost.title,
+          data: { postId: latestUrgentPost.carePostId },
+        });
+
+        // 인앱 알림 표시
         setInAppNotification({
           title: "새로운 긴급 돌봄 요청",
           body: latestUrgentPost.title,
           postId: latestUrgentPost.carePostId,
         });
 
-        // 3초 후 알림 자동 제거
+        // 3초 후 인앱 알림 제거
         setTimeout(() => {
           setInAppNotification(null);
         }, 3000);
@@ -454,7 +461,7 @@ const ChildCare = ({ navigation }) => {
     }
   }, [isFocused]);
 
-  // 알림 ��신 핸들러 추가
+  // 알림 신 핸들러 추가
   useEffect(() => {
     const notificationListener = Notifications.addNotificationReceivedListener(
       (notification) => {

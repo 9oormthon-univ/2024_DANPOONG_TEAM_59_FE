@@ -11,99 +11,108 @@ import {
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
+import * as ImagePicker from "expo-image-picker";
+import Icon from "react-native-vector-icons/MaterialIcons";
 
-const EditPost = ({ route }) => {
-  const { postId } = route.params;
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [selectedTag, setSelectedTag] = useState("#정보");
-  const navigation = useNavigation();
+const EditPost = ({ route, navigation }) => {
+  const {
+    postId,
+    title: initialTitle,
+    content: initialContent,
+    postTags: initialTags,
+    images: initialImages,
+  } = route.params;
+  const [title, setTitle] = useState(initialTitle || "");
+  const [content, setContent] = useState(initialContent || "");
+  const [selectedTags, setSelectedTags] = useState(initialTags || ["정보"]);
+  const [images, setImages] = useState(initialImages || []);
 
   useEffect(() => {
-    const loadPost = async () => {
-      try {
-        const jwtToken = await AsyncStorage.getItem("jwtToken");
+    console.log("EditPost 컴포넌트 마운트");
+    console.log("받은 파라미터:", route.params);
+    console.log("초기화된 상태:", {
+      postId,
+      title,
+      content,
+      selectedTags,
+      images,
+    });
+  }, []);
 
-        if (!jwtToken) {
-          Alert.alert("인증 오류", "로그인이 필요합니다.");
-          navigation.navigate("KakaoLogin");
-          return;
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      const newImages = result.assets.map((asset) => asset.uri);
+      setImages((prevImages) => [...prevImages, ...newImages]);
+    }
+  };
+
+  const removeImage = (index) => {
+    setImages((prevImages) => prevImages.filter((_, i) => i !== index));
+  };
+
+  const toggleTag = (tag) => {
+    const tagWithoutHash = tag.replace("#", "");
+    setSelectedTags((prevTags) => {
+      if (prevTags.includes(tagWithoutHash)) {
+        if (prevTags.length === 1) {
+          return prevTags;
         }
-
-        const response = await fetch(
-          `http://192.168.61.45:8080/api/posts/${postId}`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${jwtToken}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            Alert.alert("인증 만료", "다시 로그인해주세요.");
-            navigation.navigate("KakaoLogin");
-            return;
-          }
-          throw new Error("게시글을 불러오는데 실패했습니다");
-        }
-
-        const post = await response.json();
-        setTitle(post.title);
-        setContent(post.content);
-        setSelectedTag(`#${post.tags[0]}`);
-      } catch (error) {
-        console.error("게시글 로딩 에러:", error);
-        Alert.alert("오류", "게시글을 불러오는데 실패했습니다");
+        return prevTags.filter((t) => t !== tagWithoutHash);
       }
-    };
-
-    loadPost();
-  }, [postId]);
+      return [...prevTags, tagWithoutHash];
+    });
+  };
 
   const handleSubmit = async () => {
-    if (!title.trim() || !content.trim()) {
-      Alert.alert("알림", "제목과 내용을 모두 입력해주세요.");
-      return;
-    }
-
     try {
       const jwtToken = await AsyncStorage.getItem("jwtToken");
-
       if (!jwtToken) {
-        Alert.alert("인증 오류", "로그인이 필요합니다.");
+        Alert.alert("알림", "로그인이 필요합니다.");
         navigation.navigate("KakaoLogin");
         return;
       }
 
+      console.log("수정 요청 데이터:", {
+        postId,
+        title,
+        content,
+        imageUrls: images,
+        postTags: selectedTags,
+      });
+
       const response = await fetch(
-        `http://192.168.61.45:8080/api/posts/${postId}`,
+        `http://3.34.96.14:8080/api/posts/${postId}`,
         {
           method: "PUT",
           headers: {
-            Authorization: `Bearer ${jwtToken}`,
             "Content-Type": "application/json",
+            Authorization: `Bearer ${jwtToken}`,
           },
           body: JSON.stringify({
             title: title.trim(),
             content: content.trim(),
-            tags: [selectedTag.replace("#", "")],
+            imageUrls: images,
+            postTags: selectedTags,
           }),
         }
       );
 
+      console.log("수정 응답 상태:", response.status);
+      const responseText = await response.text();
+      console.log("수정 응답 데이터:", responseText);
+
       if (!response.ok) {
-        if (response.status === 401) {
-          Alert.alert("인증 만료", "다시 로그인해주세요.");
-          navigation.navigate("KakaoLogin");
-          return;
-        }
-        throw new Error("게시글 수정에 실패했습니다");
+        throw new Error(`수정 실패 (${response.status}): ${responseText}`);
       }
 
       Alert.alert("성공", "게시글이 수정되었습니다.", [
@@ -113,8 +122,8 @@ const EditPost = ({ route }) => {
         },
       ]);
     } catch (error) {
-      console.error("게시글 수정 에러:", error);
-      Alert.alert("오류", "게시글 수정에 실패했습니다.");
+      console.error("수정 에러:", error);
+      Alert.alert("오류", `게시글 수정에 실패했습니다.\n${error.message}`);
     }
   };
 
@@ -130,30 +139,8 @@ const EditPost = ({ route }) => {
       style={styles.container}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <ScrollView style={styles.innerContainer}>
-          <View style={styles.tagContainer}>
-            {["#정보", "#조언", "#나눔"].map((tag) => (
-              <TouchableOpacity
-                key={tag}
-                style={[
-                  styles.tagButton,
-                  selectedTag === tag && styles.selectedTag,
-                ]}
-                onPress={() => setSelectedTag(tag)}
-              >
-                <Text
-                  style={[
-                    styles.tagText,
-                    selectedTag === tag && styles.selectedTagText,
-                  ]}
-                >
-                  {tag}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={styles.label}>제목</Text>
+        <ScrollView>
+          <Text style={[styles.label, { color: "#E78B00" }]}>제목</Text>
           <TextInput
             style={styles.titleInput}
             value={title}
@@ -162,7 +149,32 @@ const EditPost = ({ route }) => {
             returnKeyType="next"
           />
 
-          <Text style={styles.label}>내용</Text>
+          <Text style={(styles.label, { color: "#E78B00" })}>
+            태그 입력하기
+          </Text>
+          <View style={styles.tagContainer}>
+            {["정보", "조언", "나눔"].map((tag) => (
+              <TouchableOpacity
+                key={tag}
+                style={[
+                  styles.tagButton,
+                  selectedTags.includes(tag) && styles.selectedTag,
+                ]}
+                onPress={() => toggleTag(`#${tag}`)}
+              >
+                <Text
+                  style={[
+                    styles.tagText,
+                    selectedTags.includes(tag) && styles.selectedTagText,
+                  ]}
+                >
+                  #{tag}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={[styles.label, { color: "#E78B00" }]}>내용</Text>
           <TextInput
             style={styles.contentInput}
             value={content}
@@ -172,6 +184,28 @@ const EditPost = ({ route }) => {
             placeholder="내용을 입력하세요"
             onSubmitEditing={handleKeyboardSubmit}
           />
+          <Text style={[styles.label, { color: "#E78B00" }]}>사진</Text>
+          <View style={styles.imageSection}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {images.map((uri, index) => (
+                <View key={index} style={styles.imageContainer}>
+                  <Image source={{ uri }} style={styles.image} />
+                  <TouchableOpacity
+                    style={styles.removeImageButton}
+                    onPress={() => removeImage(index)}
+                  >
+                    <Icon name="close" size={20} color="white" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity
+                style={styles.addImageButton}
+                onPress={pickImage}
+              >
+                <Icon name="add-photo-alternate" size={24} color="#666" />
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
 
           <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
             <Text style={styles.submitButtonText}>수정 완료</Text>
@@ -194,8 +228,7 @@ const styles = StyleSheet.create({
   },
   titleInput: {
     height: 40,
-    borderWidth: 2,
-    borderColor: "#FFEDAE",
+    backgroundColor: "#f7f7f7",
     marginBottom: 30,
     fontSize: 16,
     borderRadius: 8,
@@ -211,33 +244,31 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     marginBottom: 10,
     borderRadius: 10,
-    backgroundColor: "white",
-    borderWidth: 2,
-    borderColor: "#FFEDAE",
+    backgroundColor: "#f7f7f7",
+
     marginTop: 10,
   },
   selectedTag: {
-    backgroundColor: "#FFEDAE",
+    backgroundColor: "#FFECA1",
   },
   tagText: {
     color: "#000",
   },
   selectedTagText: {
-    color: "black",
+    color: "#E78B00",
     fontWeight: "bold",
   },
   contentInput: {
     flex: 1,
     height: 300,
-    borderWidth: 2,
-    borderColor: "#FFEDAE",
+    backgroundColor: "#f7f7f7",
     borderRadius: 8,
-    marginBottom: 200,
+    marginBottom: 20,
     padding: 12,
     fontSize: 16,
   },
   submitButton: {
-    backgroundColor: "#FFEDAE",
+    backgroundColor: "#FFECA1",
     padding: 16,
     marginBottom: 20,
     borderRadius: 8,
@@ -246,6 +277,37 @@ const styles = StyleSheet.create({
   submitButtonText: {
     fontSize: 16,
     fontWeight: "bold",
+    color: "#E78B00",
+  },
+  imageSection: {
+    marginVertical: 16,
+  },
+  imageContainer: {
+    marginRight: 8,
+    position: "relative",
+  },
+  image: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+  },
+  removeImageButton: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    borderRadius: 12,
+    padding: 4,
+  },
+  addImageButton: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderStyle: "dashed",
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
 

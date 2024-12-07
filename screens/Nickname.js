@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,95 +7,49 @@ import {
   TextInput,
   Image,
   Alert,
+  Linking,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const Nickname = ({ route }) => {
-  const { userInfo, accessToken, jwtToken } = route.params || {};
+  const { userInfo, accessToken } = route.params || {};
   const [nickname, setNickname] = useState(
     userInfo?.kakao_account?.profile?.nickname || ""
   );
   const [error, setError] = useState("");
+  const [jwtToken, setJwtToken] = useState("");
+  const [isPrivacyChecked, setIsPrivacyChecked] = useState(false);
+  const [isTermsChecked, setIsTermsChecked] = useState(false);
 
   const navigation = useNavigation();
 
-  const updateNickname = async () => {
-    try {
-      const baseUrl =
-        process.env.SERVER_URL ||
-        "http://192.168.61.45:8080/api/member/nickname";
+  useEffect(() => {
+    const getToken = async () => {
+      try {
+        console.log("[토큰 조회 시작]");
+        const token = await AsyncStorage.getItem("jwtToken");
 
-      // AsyncStorage에서 토큰들을 가져옵니다
-      const kakaoToken = await AsyncStorage.getItem("kakaoToken");
-      const jwtToken = await AsyncStorage.getItem("jwtToken");
-      const userInfo = await AsyncStorage.getItem("userInfo");
-
-      if (!kakaoToken || !jwtToken) {
-        throw new Error("인증 토큰이 없습니다.");
-      }
-
-      const parsedUserInfo = userInfo ? JSON.parse(userInfo) : null;
-
-      // 요청 데이터 준비
-      const requestData = {
-        kakaoId: parsedUserInfo?.id,
-        nickname: nickname.trim(),
-        email: parsedUserInfo?.email,
-        profileImage: parsedUserInfo?.profileImage,
-      };
-
-      console.log("요청 URL:", baseUrl);
-      console.log("전송할 데이터:", requestData);
-      console.log("JWT 토큰:", jwtToken);
-      console.log("카카오 토큰:", kakaoToken);
-
-      const response = await fetch(baseUrl, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${jwtToken}`,
-          "X-Kakao-Token": kakaoToken,
-          Accept: "application/json",
-        },
-        body: JSON.stringify(requestData),
-      });
-
-      console.log("서버 응답 상태:", response.status);
-      const responseText = await response.text();
-      console.log("서버 응답 내용:", responseText);
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error("인증이 만료되었습니다. 다시 로그인해주세요.");
+        if (token) {
+          console.log("[토큰 존재]", { tokenLength: token.length });
+          setJwtToken(token);
+        } else {
+          console.log("[토큰 없음] AsyncStorage에 토큰을 찾을 수 없습니다.");
+          // 토큰이 없는 경우 로그인 페이지로 리다이렉트
+          navigation.replace("KakaoLogin");
         }
-
-        // 응답 텍스트가 JSON 형식인 경우 파싱
-        let errorMessage;
-        try {
-          const errorData = JSON.parse(responseText);
-          errorMessage = errorData.message || "닉네임 업데이트에 실패했습니다.";
-        } catch (e) {
-          errorMessage = responseText || "닉네임 업데이트에 실패했습니다.";
-        }
-        throw new Error(errorMessage);
+      } catch (error) {
+        console.error("[토큰 조회 실패]", {
+          error: error.message,
+          stack: error.stack,
+        });
+        Alert.alert("오류", "토큰 정보를 가져오는데 실패했습니다.");
+        navigation.replace("KakaoLogin");
       }
+    };
 
-      // 닉네임을 AsyncStorage에 저장
-      await AsyncStorage.setItem("userNickname", nickname.trim());
-
-      // userInfo 업데이트
-      if (parsedUserInfo) {
-        parsedUserInfo.nickname = nickname.trim();
-        await AsyncStorage.setItem("userInfo", JSON.stringify(parsedUserInfo));
-      }
-
-      return responseText ? JSON.parse(responseText) : null;
-    } catch (error) {
-      console.error("닉네임 업데이트 상세 오류:", error);
-      throw error;
-    }
-  };
+    getToken();
+  }, [navigation]);
 
   const handleNext = async () => {
     if (!nickname.trim()) {
@@ -103,52 +57,68 @@ const Nickname = ({ route }) => {
       return;
     }
 
-    // 닉네임 유효성 검사
-    if (nickname.length < 2 || nickname.length > 10) {
-      setError("닉네임은 2자 이상 10자 이하로 입력해주세요.");
-      return;
-    }
-
-    if (!/^[가-힣a-zA-Z0-9]+$/.test(nickname)) {
-      setError("닉네임은 한글, 영문, 숫자만 사용 가능합니다.");
+    if (!isPrivacyChecked || !isTermsChecked) {
+      setError("모든 약관에 동의해주세요!");
       return;
     }
 
     try {
-      await updateNickname();
-      setError("");
-
-      Alert.alert("성공", "닉네임이 성공적으로 설정되었습니다.", [
-        {
-          text: "확인",
-          onPress: () => navigation.navigate("board"),
-        },
-      ]);
-    } catch (error) {
-      console.error("처리 중 오류 발생:", error);
-
-      if (error.message.includes("인증이 만료")) {
-        Alert.alert("인증 만료", "다시 로그인해주세요.", [
-          {
-            text: "확인",
-            onPress: () => navigation.navigate("KakaoLogin"),
-          },
-        ]);
-      } else {
-        setError(error.message);
-        Alert.alert("오류", error.message, [
-          {
-            text: "확인",
-            style: "cancel",
-          },
-        ]);
+      if (!jwtToken) {
+        console.error("[토큰 없음] 닉네임 설정 불가");
+        throw new Error("인증 토큰이 없습니다.");
       }
+
+      console.log("[닉네임 설정 요청]", {
+        nickname: nickname.trim(),
+        tokenExists: !!jwtToken,
+      });
+
+      const response = await fetch(
+        "http://3.34.96.14:8080/api/member/nickname",
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${jwtToken}`,
+          },
+          body: JSON.stringify({
+            nickname: nickname.trim(),
+          }),
+        }
+      );
+
+      // 응답 상태 확인
+      if (!response.ok) {
+        throw new Error(`서버 응답 오류: ${response.status}`);
+      }
+
+      // 성공시에만 Location 페이지로 이동
+      setError("");
+      navigation.navigate("Location");
+    } catch (error) {
+      console.error("[닉네임 설정 오류]", {
+        message: error.message,
+        token: jwtToken ? "토큰 존재" : "토큰 없음",
+        type: error.name,
+        stack: error.stack,
+      });
+      setError("닉네임 설정 중 오류가 발생했습니다.");
+      Alert.alert("오류", "닉네임 설정에 실패했습니다.");
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.NicknameText}>닉네임을 입력해주세요.</Text>
+      <Image
+        source={require("../assets/background.png")}
+        style={styles.backgroundImage}
+      />
+      <Text style={styles.NicknameText}>
+        앱에서 사용하실{"\n"}닉네임을 입력해주세요.
+      </Text>
+      <Text style={styles.SubText}>
+        닉네임은 마이페이지에서{"\n"}변경이 가능합니다.
+      </Text>
       <Image source={require("../assets/logo2.png")} style={styles.logo2} />
       <TextInput
         style={[styles.input, error ? styles.inputError : null]}
@@ -161,17 +131,73 @@ const Nickname = ({ route }) => {
         placeholder="닉네임을 입력하세요"
       />
 
+      <View style={styles.checkboxContainer}>
+        <TouchableOpacity
+          style={styles.checkboxRow}
+          onPress={() => setIsPrivacyChecked(!isPrivacyChecked)}
+        >
+          <View style={[styles.checkbox, isPrivacyChecked && styles.checked]}>
+            {isPrivacyChecked && <Text style={styles.checkmark}>✓</Text>}
+          </View>
+          <View style={styles.checkboxTextContainer}>
+            <Text style={styles.checkboxText}>
+              개인정보 처리방침 동의 (필수)
+            </Text>
+            <TouchableOpacity
+              onPress={() =>
+                Linking.openURL(
+                  "https://strong-quail-f1b.notion.site/983b2e0685dc461cb94779df818e962c"
+                )
+              }
+            >
+              <Text style={styles.linkText}>더보기</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.checkboxRow}
+          onPress={() => setIsTermsChecked(!isTermsChecked)}
+        >
+          <View style={[styles.checkbox, isTermsChecked && styles.checked]}>
+            {isTermsChecked && <Text style={styles.checkmark}>✓</Text>}
+          </View>
+          <View style={styles.checkboxTextContainer}>
+            <Text style={styles.checkboxText}>앱 이용약관 동의 (필수)</Text>
+            <TouchableOpacity
+              onPress={() =>
+                Linking.openURL(
+                  "https://strong-quail-f1b.notion.site/5d3a16ffabea4109a22956b1cb7a4bbe"
+                )
+              }
+            >
+              <Text style={styles.linkText}>더보기</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </View>
+
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       <View style={styles.buttonContainer}>
         <TouchableOpacity
-          onPress={() => navigation.navigate("KakaoLogin")}
-          style={styles.PreBottom}
+          onPress={handleNext}
+          style={[
+            styles.PreBottom,
+            (!isPrivacyChecked || !isTermsChecked || !nickname.trim()) &&
+              styles.disabledButton,
+          ]}
+          disabled={!isPrivacyChecked || !isTermsChecked || !nickname.trim()}
         >
-          <Text style={styles.BottomText}>이전</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleNext} style={styles.NextBottom}>
-          <Text style={styles.BottomText}>다음</Text>
+          <Text
+            style={[
+              styles.BottomText,
+              (!isPrivacyChecked || !isTermsChecked || !nickname.trim()) &&
+                styles.disabledButtonText,
+            ]}
+          >
+            다음
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -183,52 +209,67 @@ export default Nickname;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+  },
+  backgroundImage: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
   },
   NicknameText: {
     fontSize: 30,
     marginTop: "40%",
-    textAlign: "center",
+    marginLeft: 28,
+    fontWeight: "bold",
+  },
+  SubText: {
+    fontSize: 15,
+    marginLeft: 28,
+    marginTop: 12,
   },
   input: {
     borderWidth: 1,
-    borderColor: "#ccc",
+    borderColor: "#FFECA1",
+    backgroundColor: "#FFFFFF",
     padding: 10,
     margin: 10,
-    width: "80%",
+    width: "75%",
     alignSelf: "center",
+    borderRadius: 10,
   },
   logo2: {
-    width: 400,
-    height: 400,
+    width: 150,
+    height: 150,
+    marginTop: 110,
+    marginBottom: 45,
     alignSelf: "center",
   },
   PreBottom: {
     backgroundColor: "#FFEDAE",
     padding: 10,
     marginTop: "10%",
-    width: "30%",
+    width: "110%",
+    height: 200,
     alignSelf: "center",
     borderRadius: 10,
   },
-
-  NextBottom: {
-    backgroundColor: "#FFEDAE",
-    padding: 10,
-    marginTop: "10%",
-    width: "30%",
-    alignSelf: "center",
-    borderRadius: 10,
+  disabledButton: {
+    backgroundColor: "#E5E5E5", // 비활성화됐을 때의 배경색
+    opacity: 0.7,
   },
   BottomText: {
     fontSize: 15,
-    color: "black",
+    color: "#E78B00",
     textAlign: "center",
+    fontWeight: "bold",
+    paddingTop: 15,
+  },
+  disabledButtonText: {
+    color: "#999999", // 비활성화됐을 때의 텍스트 색상
   },
   buttonContainer: {
     flexDirection: "row",
     justifyContent: "space-around",
-    marginTop: "20%",
   },
   inputError: {
     borderColor: "red",
@@ -237,5 +278,48 @@ const styles = StyleSheet.create({
     color: "red",
     textAlign: "center",
     marginTop: 5,
+  },
+  checkboxContainer: {
+    marginTop: 10,
+    marginBottom: 10,
+    alignSelf: "center",
+    width: "75%",
+  },
+  checkboxRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderWidth: 1,
+    borderColor: "#E78B00",
+    marginRight: 10,
+    borderRadius: 4,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checked: {
+    backgroundColor: "#E78B00",
+  },
+  checkmark: {
+    color: "white",
+    fontSize: 14,
+  },
+  checkboxText: {
+    fontSize: 14,
+    color: "#333",
+  },
+  checkboxTextContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  linkText: {
+    color: "#E78B00",
+    textDecorationLine: "underline",
+    marginLeft: 10,
+    fontSize: 12,
   },
 });

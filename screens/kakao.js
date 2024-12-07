@@ -15,7 +15,7 @@ const KaKaoLogin = () => {
 
   const getToken = async (code) => {
     try {
-      console.log("인증 코드로 토큰 요청:", code);
+      console.log("[토큰 요청 시작]", { code, REDIRECT_URI });
 
       const tokenRequest = await fetch("https://kauth.kakao.com/oauth/token", {
         method: "POST",
@@ -25,8 +25,18 @@ const KaKaoLogin = () => {
         body: `grant_type=authorization_code&client_id=${REST_API_KEY}&redirect_uri=${REDIRECT_URI}&code=${code}`,
       });
 
+      console.log("[토큰 요청 응답 상태]", {
+        status: tokenRequest.status,
+        ok: tokenRequest.ok,
+      });
+
       if (!tokenRequest.ok) {
-        throw new Error(`토큰 요청 실패: ${tokenRequest.status}`);
+        const errorText = await tokenRequest.text();
+        console.error("[토큰 요청 실패]", {
+          status: tokenRequest.status,
+          error: errorText,
+        });
+        throw new Error(`토큰 요청 실패: ${tokenRequest.status}, ${errorText}`);
       }
 
       const tokenResponse = await tokenRequest.json();
@@ -45,18 +55,75 @@ const KaKaoLogin = () => {
         const userInfo = await userInfoResponse.json();
         console.log("사용자 정보:", userInfo);
 
-        const serverResponse = await sendUserInfoToServer(
-          userInfo,
-          tokenResponse.access_token
-        );
-        const jwtToken = serverResponse.token;
-
-        // JWT 토큰을 AsyncStorage에 저장
+        // 서버에 사용자 정보 전송
         try {
-          await AsyncStorage.setItem("jwtToken", jwtToken);
-          console.log("JWT 토큰 저장 완료:", jwtToken);
+          console.log("[서버 요청 시작]", {
+            userId: userInfo.id,
+            email: userInfo.kakao_account?.email,
+            nickname: userInfo.properties?.nickname,
+          });
+
+          const serverResponse = await fetch(
+            "http://3.34.96.14:8080/api/auth/kakao/callback",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                id: userInfo.id,
+                connected_at: new Date().toISOString(),
+                email: userInfo.kakao_account?.email || "",
+                nickname: userInfo.properties?.nickname || "",
+                profile_image_url: userInfo.properties?.profile_image || "",
+              }),
+            }
+          );
+
+          console.log("[서버 응답 상태]", {
+            status: serverResponse.status,
+            ok: serverResponse.ok,
+          });
+
+          if (!serverResponse.ok) {
+            const errorText = await serverResponse.text();
+            console.error("[서버 응답 실패]", {
+              status: serverResponse.status,
+              error: errorText,
+            });
+            throw new Error(
+              `서버 응답 오류: ${serverResponse.status}, ${errorText}`
+            );
+          }
+
+          const serverData = await serverResponse.json();
+          console.log("서버 응답:", serverData);
+
+          // JWT 토큰 저장 추가
+          if (serverData.token) {
+            await AsyncStorage.setItem("jwtToken", serverData.token);
+            console.log("JWT 토큰 저장 완료");
+          }
         } catch (error) {
-          console.error("JWT 토큰 저장 실패:", error);
+          console.error("[서버 통신 상세 에러]", {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+          });
+          Alert.alert("오류", "서버와의 통신에 실패했습니다.");
+        }
+
+        // AsyncStorage에 사용자 정보와 토큰 저장
+        try {
+          await AsyncStorage.setItem("userInfo", JSON.stringify(userInfo));
+          await AsyncStorage.setItem("accessToken", tokenResponse.access_token);
+          await AsyncStorage.setItem(
+            "refreshToken",
+            tokenResponse.refresh_token
+          );
+          console.log("사용자 정보 및 토큰 저장 완료");
+        } catch (error) {
+          console.error("데이터 저장 실패:", error);
         }
 
         navigation.replace("Nickname", {
@@ -64,15 +131,18 @@ const KaKaoLogin = () => {
           accessToken: tokenResponse.access_token,
           refreshToken: tokenResponse.refresh_token,
           userInfo: userInfo,
-          jwtToken: jwtToken,
         });
       } else {
         Alert.alert("오류", "토큰을 받아오는데 실패했습니다.");
         navigation.goBack();
       }
     } catch (error) {
-      console.error("토큰 요청 중 오류:", error);
-      Alert.alert("오류", "토큰을 받아오는데 실패했습니다.");
+      console.error("[전체 프로세스 에러]", {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      });
+      Alert.alert("오류", "카카오 로그인 처리 중 오류가 발생했습니다.");
       navigation.goBack();
     }
   };
@@ -128,48 +198,6 @@ const KaKaoLogin = () => {
           },
         ]
       );
-    }
-  };
-
-  const sendUserInfoToServer = async (userInfo, accessToken) => {
-    try {
-      const baseUrl = `http://192.168.61.45:8080/api/auth/kakao/callback`;
-
-      // 요청 데이터 로깅
-      console.log("=== 서버 요청 정보 ===");
-      console.log("1. 요청 URL:", baseUrl);
-      console.log("2. 액세스 토큰:", accessToken);
-
-      const requestBody = {
-        id: userInfo.id,
-        connected_at: userInfo.connected_at,
-        email: userInfo.kakao_account?.email || "",
-        nickname: userInfo.kakao_account?.profile?.nickname || "",
-        profile_image_url:
-          userInfo.kakao_account?.profile?.profile_image_url || "",
-      };
-
-      const response = await fetch(baseUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`, // Authorization 헤더로 변경
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      console.log("서버 응답 상태:", response.status);
-      const responseText = await response.text();
-      console.log("서버 응답 내용:", responseText);
-
-      if (!response.ok) {
-        throw new Error(`서버 응답 오류: ${response.status} - ${responseText}`);
-      }
-
-      return responseText ? JSON.parse(responseText) : null;
-    } catch (error) {
-      console.error("서버 통신 상세 오류:", error);
-      throw error;
     }
   };
 

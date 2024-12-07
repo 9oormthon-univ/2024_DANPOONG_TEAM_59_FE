@@ -8,40 +8,91 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Image,
+  Modal,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Icon from "react-native-vector-icons/MaterialIcons";
 
 const ChildCareDetail = ({ route, navigation }) => {
-  const { postId } = route.params;
+  const { carePostId } = route.params;
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState("");
   const [comments, setComments] = useState([]);
-  const [userNickname, setUserNickname] = useState(null);
+  const [userInfo, setUserInfo] = useState(null);
+  const [authorProfileImage, setAuthorProfileImage] = useState(
+    "https://via.placeholder.com/50"
+  );
+  const [locationInfo, setLocationInfo] = useState(null);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [sharingStatuses, setSharingStatuses] = useState([
+    { value: "구인완료", label: "구인완료" },
+    { value: "예약중", label: "예약중" },
+  ]);
 
   useEffect(() => {
+    console.log("ChildCareDetail mounted with carePostId:", carePostId);
     loadPostDetail();
-    loadComments();
-    const getUserNickname = async () => {
-      const nickname = await AsyncStorage.getItem("userNickname");
-      setUserNickname(nickname);
-    };
-    getUserNickname();
-  }, [postId]);
+    getUserInfo();
+    loadLocationInfo();
+  }, [carePostId]);
 
+  const getUserInfo = async () => {
+    try {
+      const userInfoString = await AsyncStorage.getItem("userInfo");
+      if (userInfoString) {
+        const parsedUserInfo = JSON.parse(userInfoString);
+        setUserInfo(parsedUserInfo);
+      }
+    } catch (error) {
+      console.error("사용자 정보 로딩 에러:", error);
+    }
+  };
+
+  const loadLocationInfo = async () => {
+    try {
+      const savedLocation = await AsyncStorage.getItem("userLocation");
+      if (savedLocation) {
+        const locationData = JSON.parse(savedLocation);
+        setLocationInfo(locationData);
+      }
+    } catch (error) {
+      console.error("위치 정보 로딩 에러:", error);
+    }
+  };
+
+  // 게시글 작성자 확인 함수
+  const isAuthor = () => {
+    if (!userInfo || !post) return false;
+    return post.memberId === userInfo.id;
+  };
+
+  // 댓글 작성자 확인 함수
+  const isCommentAuthor = (comment) => {
+    if (!userInfo) return false;
+    return comment.memberId === userInfo.id;
+  };
+
+  // 시간 포맷팅 함수 수정
+  const formatTime = (timeString) => {
+    if (!timeString) return "";
+    const [hours, minutes] = timeString.split(":");
+    return `${hours}:${minutes}`;
+  };
+
+  // 게시글 상세 정보 로딩 부분 수정
   const loadPostDetail = async () => {
     try {
       const jwtToken = await AsyncStorage.getItem("jwtToken");
-
       if (!jwtToken) {
-        Alert.alert("인증 오류", "로그인이 필요합니다.");
+        Alert.alert("알림", "로그인이 필요합니다.");
         navigation.navigate("KakaoLogin");
         return;
       }
 
       const response = await fetch(
-        `http://192.168.61.45:8080/api/carePosts/${postId}`,
+        `http://3.34.96.14:8080/api/carePosts/${carePostId}`,
         {
           method: "GET",
           headers: {
@@ -53,50 +104,24 @@ const ChildCareDetail = ({ route, navigation }) => {
 
       if (!response.ok) {
         if (response.status === 401) {
-          Alert.alert("인증 만료", "다시 로그인해주세요.");
+          Alert.alert("알림", "로그인이 만료되었습니다. 다시 로그인해주세요.");
           navigation.navigate("KakaoLogin");
           return;
         }
-        throw new Error("게시글을 불러오는데 실패했습니다.");
+        throw new Error("게시글 조회에 실패했습니다.");
       }
 
       const data = await response.json();
       setPost(data);
-      setComments(data.comments || []);
+      setComments(data.commentResponse || []);
+      setAuthorProfileImage(
+        data.profileImageUrl || "https://via.placeholder.com/50"
+      );
+      setLoading(false);
     } catch (error) {
       console.error("게시글 상세 정보 로딩 에러:", error);
-      Alert.alert("오류", "게시글을 불러오는데 실패했습니다.");
-    } finally {
+      Alert.alert("오류", "게시글을 �� 실패했습니다.");
       setLoading(false);
-    }
-  };
-
-  const loadComments = async () => {
-    try {
-      const jwtToken = await AsyncStorage.getItem("jwtToken");
-      const carePostId = route.params.postId;
-
-      const response = await fetch(
-        `http://192.168.61.45:8080/api/carePosts/${carePostId}/comments`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${jwtToken}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("댓글을 불러오는데 실패했습니다.");
-      }
-
-      const data = await response.json();
-      console.log("받아온 댓글 데이터:", data);
-      setComments(data);
-    } catch (error) {
-      console.error("댓글 로딩 에러:", error);
-      Alert.alert("오류", "댓글을 불러오는데 실패했습니다.");
     }
   };
 
@@ -108,137 +133,382 @@ const ChildCareDetail = ({ route, navigation }) => {
 
     try {
       const jwtToken = await AsyncStorage.getItem("jwtToken");
-      const carePostId = route.params.postId;
+      if (!jwtToken) {
+        Alert.alert("알림", "로그인이 필요합니다.");
+        navigation.navigate("KakaoLogin");
+        return;
+      }
 
       const response = await fetch(
-        `http://192.168.61.45:8080/api/carePosts/${carePostId}/comments`,
+        `http://3.34.96.14:8080/api/carePosts/${carePostId}/comments`,
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${jwtToken}`,
             "Content-Type": "application/json",
+            Authorization: `Bearer ${jwtToken}`,
           },
           body: JSON.stringify({
             content: newComment.trim(),
-            postId: carePostId,
           }),
         }
       );
 
       if (!response.ok) {
         if (response.status === 401) {
-          Alert.alert("인증 만료", "다시 로그인해주세요.");
+          Alert.alert("알림", "로그인이 만료되었습니다. 다시 로그인해주세요.");
           navigation.navigate("KakaoLogin");
           return;
         }
-        throw new Error("댓글 작성에 실패했습니다.");
+        throw new Error("댓글 등록에 실패했습니다.");
       }
 
       setNewComment("");
-      loadComments();
-      Alert.alert("성공", "댓글이 등록되었습니다.");
+      await loadPostDetail();
+      Alert.alert("성공", "댓글이 었습니다.");
     } catch (error) {
       console.error("댓글 작성 에러:", error);
       Alert.alert("오류", "댓글 작성에 실패했습니다.");
     }
   };
 
-  const handleDeleteComment = async (careCommentId) => {
-    if (!careCommentId) {
-      console.error("댓글 ID가 없습니다.");
-      Alert.alert("오류", "댓글을 삭제할 수 없습니다.");
-      return;
-    }
-
+  const handleDeleteComment = async (commentId) => {
     try {
       const jwtToken = await AsyncStorage.getItem("jwtToken");
-      const carePostId = route.params.postId;
-
       if (!jwtToken) {
-        Alert.alert("인증 오류", "로그인이 필요합니다.");
+        Alert.alert("알림", "로그인이 필요합니다.");
         navigation.navigate("KakaoLogin");
         return;
       }
 
       Alert.alert("댓글 삭제", "정말로 이 댓글을 삭제하시겠습니까?", [
-        {
-          text: "취소",
-          style: "cancel",
-        },
+        { text: "취소", style: "cancel" },
         {
           text: "삭제",
+          style: "destructive",
           onPress: async () => {
             try {
-              console.log(
-                `댓글 삭제 시도 - CarePostId: ${carePostId}, CareCommentId: ${careCommentId}`
-              );
-
               const response = await fetch(
-                `http://192.168.61.45:8080/api/carePosts/${carePostId}/comments/${careCommentId}`,
+                `http://3.34.96.14:8080/api/carePosts/${carePostId}/comments/${commentId}`,
                 {
                   method: "DELETE",
                   headers: {
                     Authorization: `Bearer ${jwtToken}`,
-                    "Content-Type": "application/json",
                   },
                 }
               );
 
               if (!response.ok) {
-                const errorData = await response.text();
-                throw new Error(errorData);
+                if (response.status === 401) {
+                  Alert.alert(
+                    "알림",
+                    "로그인이 만료되었습니다. 다시 로그인해주세요."
+                  );
+                  navigation.navigate("KakaoLogin");
+                  return;
+                }
+                throw new Error("댓글 삭제에 실패했습니다.");
               }
 
+              await loadPostDetail();
               Alert.alert("성공", "댓글이 삭제되었습니다.");
-              await loadComments();
             } catch (error) {
-              console.error("댓글 삭제 처리 중 에러:", error);
+              console.error("댓글 삭제 에러:", error);
               Alert.alert("오류", "댓글 삭제에 실패했습니다.");
             }
           },
-          style: "destructive",
         },
       ]);
     } catch (error) {
-      console.error("댓글 삭제 함수 에러:", error);
-      Alert.alert("오류", "댓글 삭제 처리 중 오류가 발생했습니다.");
+      console.error("댓글 삭제 에러:", error);
+      Alert.alert("오류", "댓글 삭제에 실패했습니다.");
     }
   };
 
+  const handleCommentOptions = (comment) => {
+    const buttons = [
+      {
+        text: "삭제하기",
+        onPress: () => handleDeleteComment(comment.careCommentId),
+        style: "destructive",
+      },
+      {
+        text: "쪽지 보내기",
+        onPress: () => handleSendMessage(comment),
+      },
+      {
+        text: "신고하기",
+        onPress: () => handleReportComment(comment),
+      },
+      {
+        text: "취소",
+        style: "cancel",
+      },
+    ];
+
+    Alert.alert("댓글 관리", "선택해주세요", buttons, { cancelable: true });
+  };
+
+  const handleSendMessage = async (comment) => {
+    try {
+      const jwtToken = await AsyncStorage.getItem("jwtToken");
+      if (!jwtToken) {
+        Alert.alert("알림", "로그인이 필요합니다.");
+        navigation.navigate("KakaoLogin");
+        return;
+      }
+
+      // API 요청 데이터 로깅
+      console.log("Sending request with data:", {
+        tag: "돌봄",
+        id: parseInt(carePostId),
+      });
+
+      const response = await fetch("http://3.34.96.14:8080/api/chatrooms", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwtToken}`,
+        },
+        body: JSON.stringify({
+          tag: "돌봄",
+          id: parseInt(carePostId),
+        }),
+      });
+
+      // 응답 상태 및 데이터 로깅
+      console.log("Response Status:", response.status);
+      const responseText = await response.text();
+      console.log("Response Text:", responseText);
+
+      if (!response.ok) {
+        if (response.status === 500) {
+          console.error("서버 에러 응답:", responseText);
+          try {
+            const errorData = JSON.parse(responseText);
+            console.error("상세 에러 정보:", errorData);
+            throw new Error(
+              errorData.message || "서버 내부 오류가 발생했습니다."
+            );
+          } catch (e) {
+            throw new Error("서버 내부 오류가 발생했습니다.");
+          }
+        }
+
+        let errorMessage = "채팅방 생성에 실패했습니다.";
+        switch (response.status) {
+          case 400:
+            errorMessage = "잘못된 요청입니다. 입력값을 확인해주세요.";
+            break;
+          case 401:
+            errorMessage = "로그인이 만료되었습니다. 다시 로그인해주세요.";
+            navigation.navigate("KakaoLogin");
+            break;
+          case 403:
+            errorMessage = "권한이 없습니다.";
+            break;
+          case 404:
+            errorMessage = "게시글을 찾을 수 없습니다.";
+            break;
+          case 409:
+            // 이미 존재하는 채팅방 처리
+            try {
+              const data = JSON.parse(responseText);
+              if (data.chatRoomId) {
+                navigation.navigate("ChatNew", {
+                  chatId: data.chatRoomId,
+                  userName: comment.nickname,
+                  postInfo: {
+                    title: post.title,
+                    thumbnail:
+                      post.imageUrls?.[0] || "https://via.placeholder.com/50",
+                    tags: [post.tag],
+                    date: post.createdAt,
+                  },
+                });
+                return;
+              }
+            } catch (e) {
+              console.error("채팅방 ID 파싱 실패:", e);
+            }
+            errorMessage = "이미 존재하는 채팅방입니다.";
+            break;
+        }
+        throw new Error(errorMessage);
+      }
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error("JSON 파싱 에러:", e);
+        throw new Error("서버 응답을 처리하는데 실패했습니다.");
+      }
+
+      if (!data.chatRoomId) {
+        throw new Error("채팅방 ID를 받지 못했습니다.");
+      }
+
+      // 채팅방으 이동
+      navigation.navigate("ChatNew", {
+        chatId: data.chatRoomId,
+        userName: comment.nickname,
+        postInfo: {
+          title: post.title,
+          thumbnail: post.imageUrls?.[0] || "https://via.placeholder.com/50",
+          tags: [post.tag],
+          date: post.createdAt,
+        },
+      });
+    } catch (error) {
+      console.error("채팅방 생성 에러:", error);
+      Alert.alert("오류", error.message || "채팅방을 생성하는데 실패했습니다.");
+    }
+  };
+
+  const handleReportComment = async (comment) => {
+    try {
+      const reportedComments = await AsyncStorage.getItem("reportedComments");
+      const reportedCommentsArray = reportedComments
+        ? JSON.parse(reportedComments)
+        : [];
+
+      if (
+        reportedCommentsArray.some(
+          (report) =>
+            report.commentId === comment.careCommentId &&
+            report.reporterId === userInfo.id
+        )
+      ) {
+        Alert.alert("알림", "이미 신고한 댓글입니다.");
+        return;
+      }
+
+      Alert.alert("신고 사유 선택", "신고 사유를 선택해주세요", [
+        {
+          text: "비방/욕설",
+          onPress: () => submitCommentReport(comment, "비방/욕설"),
+        },
+        { text: "음란", onPress: () => submitCommentReport(comment, "음란") },
+        {
+          text: "스팸/광고",
+          onPress: () => submitCommentReport(comment, "스팸/광고"),
+        },
+        {
+          text: "아동 청소년 대상 성범죄",
+          onPress: () => submitCommentReport(comment, "아동 청소년 대상 성범"),
+        },
+        {
+          text: "불 품 및 서비스",
+          onPress: () => submitCommentReport(comment, "불법 상품 및 서비스"),
+        },
+        {
+          text: "자살/자해",
+          onPress: () => submitCommentReport(comment, "자살/자해"),
+        },
+        {
+          text: "사기/사칭",
+          onPress: () => submitCommentReport(comment, "사기/사칭"),
+        },
+        {
+          text: "비정상적인 서비스 이용",
+          onPress: () => submitCommentReport(comment, "비정상적인 서비스 이용"),
+        },
+        {
+          text: "기타",
+          onPress: () => {
+            Alert.prompt(
+              "기타 신고 사유",
+              "구체적인 신고 사유를 입력해주세요",
+              [
+                { text: "취소", style: "cancel" },
+                {
+                  text: "고",
+                  onPress: (reason) => {
+                    if (reason && reason.trim()) {
+                      submitCommentReport(comment, "기타", reason.trim());
+                    } else {
+                      Alert.alert("알림", "신고 사유를 입력해주세요.");
+                    }
+                  },
+                },
+              ],
+              "plain-text"
+            );
+          },
+        },
+        { text: "", style: "cancel" },
+      ]);
+    } catch (error) {
+      console.error("댓글 신고 처리 오류:", error);
+      Alert.alert("오류", "신고를 처리할 수 없습니다.");
+    }
+  };
+
+  const submitCommentReport = async (comment, reason, customReason = "") => {
+    try {
+      const reportedComments = await AsyncStorage.getItem("reportedComments");
+      const reportedCommentsArray = reportedComments
+        ? JSON.parse(reportedComments)
+        : [];
+
+      const newReport = {
+        commentId: comment.careCommentId,
+        postId: carePostId,
+        reporterId: userInfo.id,
+        reportedAt: new Date().toISOString(),
+        commentAuthor: comment.nickname,
+        reportReason: reason,
+        customReason: customReason,
+        status: "pending",
+      };
+
+      reportedCommentsArray.push(newReport);
+      await AsyncStorage.setItem(
+        "reportedComments",
+        JSON.stringify(reportedCommentsArray)
+      );
+      Alert.alert("료", "댓글 신고가 접수되었습니다.");
+    } catch (error) {
+      console.error("글 신고 저장 오류:", error);
+      Alert.alert("오류", "신고 처리 중 문제가 발생했습니다.");
+    }
+  };
+
+  // 댓글 렌 부분 수정
   const renderComments = () => (
     <View style={styles.commentsSection}>
       <Text style={styles.commentHeader}>댓글 {comments.length}개</Text>
-      {comments.map((comment) => {
-        console.log("댓글 정보:", comment);
-        return (
-          <View key={comment.careCommentId} style={styles.commentItem}>
-            <View style={styles.commentHeader}>
-              <View style={styles.commentAuthorContainer}>
+      {comments.map((comment) => (
+        <View key={comment.careCommentId} style={styles.commentItem}>
+          <View style={styles.commentHeader}>
+            <View style={styles.commentAuthorContainer}>
+              <Image
+                source={{
+                  uri: comment.imageUrl || "https://via.placeholder.com/50",
+                }}
+                style={styles.commentAuthorImage}
+              />
+              <View style={styles.commentAuthorInfo}>
                 <Text style={styles.commentAuthor}>{comment.nickname}</Text>
                 <Text style={styles.commentDate}>
                   {formatDate(comment.updatedAt)}
                 </Text>
               </View>
-              {userNickname === comment.nickname && (
-                <TouchableOpacity
-                  onPress={() => {
-                    console.log("삭제하려는 댓글 ID:", comment.careCommentId);
-                    handleDeleteComment(comment.careCommentId);
-                  }}
-                  style={styles.deleteButton}
-                >
-                  <Icon name="delete-outline" size={20} color="#666" />
-                </TouchableOpacity>
-              )}
             </View>
-            <Text style={styles.commentContent}>{comment.content}</Text>
+            <TouchableOpacity
+              onPress={() => handleCommentOptions(comment)}
+              style={styles.optionsButton}
+            >
+              <Icon name="more-vert" size={20} color="#666" />
+            </TouchableOpacity>
           </View>
-        );
-      })}
+          <Text style={styles.commentContent}>{comment.content}</Text>
+        </View>
+      ))}
     </View>
   );
 
-  // 날짜 포맷팅 함수 추가
+  // 날짜 포 함수 추가
   const formatDate = (dateString) => {
     if (!dateString) return "";
     const date = new Date(dateString);
@@ -248,6 +518,138 @@ const ChildCareDetail = ({ route, navigation }) => {
     const hours = String(date.getHours()).padStart(2, "0");
     const minutes = String(date.getMinutes()).padStart(2, "0");
     return `${year}.${month}.${day} ${hours}:${minutes}`;
+  };
+
+  // 나눔 게시글인지 확인하는 함수
+  const isSharingPost = () => {
+    return post?.tags?.includes("구인중");
+  };
+
+  const handleTagChange = async (newTag) => {
+    try {
+      const savedPosts = await AsyncStorage.getItem("carePosts");
+      const posts = savedPosts ? JSON.parse(savedPosts) : [];
+      const postIndex = posts.findIndex((p) => p.carePostId === carePostId);
+
+      if (postIndex !== -1) {
+        const currentTags = posts[postIndex].tags;
+        const nonUrgentTags = currentTags.filter((tag) => tag !== "긴급");
+
+        // "긴급" 태그를 제외한 나머지 태그 변경
+        posts[postIndex].tags = ["긴급", ...nonUrgentTags.map(() => newTag)];
+        await AsyncStorage.setItem("carePosts", JSON.stringify(posts));
+        setPost({
+          ...post,
+          tags: ["긴급", ...nonUrgentTags.map(() => newTag)],
+        });
+        Alert.alert("공", "태그가 변경되었니.");
+      } else {
+        Alert.alert("오류", "게시글을 찾을 수 없습니다.");
+      }
+    } catch (error) {
+      console.error("태그 변경 에러:", error);
+      Alert.alert("오류", "태그 변경에 실패했습니다.");
+    }
+  };
+
+  // 태그 렌더링 부분 수정
+  const renderTags = () => {
+    const tags = [];
+    if (post.isEmergency) tags.push("긴급");
+    if (post.tag) tags.push(post.tag);
+
+    return (
+      <View style={styles.tagAndTimeContainer}>
+        <View style={styles.tagContainer}>
+          {tags.map((tag, index) => (
+            <Text
+              key={index}
+              style={[
+                styles.tag,
+                tag === "긴급" && styles.urgentPostTag,
+                tag === "예약중" && styles.reservingPostTag,
+                tag === "구인완료" && styles.completedPostTag,
+                tag === "구인중" && styles.recruitingPostTag,
+              ]}
+            >
+              {tag}
+            </Text>
+          ))}
+        </View>
+        <Text style={styles.postTime}>{formatDate(post.updatedAt)}</Text>
+      </View>
+    );
+  };
+
+  // 돌봄 시간 정보 표시 부분 수정
+  const renderCareInfo = () => (
+    <View style={styles.careInfoContainer}>
+      <View style={styles.dateTimeContainer}>
+        <Text style={styles.dateTimeLabel}>돌봄 날짜:</Text>
+        <Text style={styles.dateTimeText}>
+          {post.careDate || "날짜 정보 없음"}
+        </Text>
+      </View>
+      <View style={styles.dateTimeContainer}>
+        <Text style={styles.dateTimeLabel}>돌봄 시간:</Text>
+        <Text style={styles.dateTimeText}>
+          {post.startTime && post.endTime
+            ? `${formatTime(post.startTime)} ~ ${formatTime(post.endTime)}`
+            : "시간 정보 없음"}
+        </Text>
+      </View>
+    </View>
+  );
+
+  // 게시글 관리 옵션 처리
+  const handlePostOptions = async () => {
+    try {
+      const userInfoString = await AsyncStorage.getItem("userInfo");
+      const jwtToken = await AsyncStorage.getItem("jwtToken");
+
+      if (!userInfoString || !jwtToken) {
+        Alert.alert("알림", "로그인이 필요합니다.");
+        navigation.navigate("KakaoLogin");
+        return;
+      }
+
+      const userInfo = JSON.parse(userInfoString);
+
+      // 작성자만 수��/삭제 가능하도록 체크
+      if (post.memberId === userInfo.id) {
+        Alert.alert("게시글 관리", "선택해주세요", [
+          {
+            text: "수정하기",
+            onPress: () => {
+              navigation.navigate("EditCarePost", {
+                carePostId: carePostId,
+                postData: {
+                  title: post.title,
+                  content: post.content,
+                  careDate: post.careDate,
+                  startTime: post.startTime,
+                  endTime: post.endTime,
+                  isEmergency: post.isEmergency,
+                  imageUrls: post.imageUrls,
+                  carePostTag: post.carePostTag,
+                },
+              });
+            },
+          },
+          // ... 다른 옵션들 ...
+          {
+            text: "취소",
+            style: "cancel",
+          },
+        ]);
+      } else {
+        // 작성자가 아닌 경우
+        Alert.alert("알림", "게시글 작성자만 수정할 수 있습니다.");
+      }
+    } catch (error) {
+      console.error("게시글 관리 오류:", error);
+      Alert.alert("오류", "작업을 수행할 수 없습니다.");
+    }
   };
 
   if (loading) {
@@ -269,27 +671,49 @@ const ChildCareDetail = ({ route, navigation }) => {
   return (
     <View style={styles.container}>
       <ScrollView style={styles.content}>
-        <View style={styles.tagContainer}>
-          {post.tags?.map((tag, index) => (
-            <Text key={index} style={styles.tag}>
-              #{tag}
-            </Text>
-          ))}
-        </View>
-
+        {renderTags()}
         <Text style={styles.title}>{post.title}</Text>
 
-        <Text style={styles.postContent}>{post.content}</Text>
-
         <View style={styles.authorInfo}>
-          <Text style={styles.author}>{post.nickname}</Text>
-          <Text style={styles.date}>
-            {post.updatedAt ? formatDate(post.updatedAt) : "날짜 없음"}
-          </Text>
+          <View style={styles.authorDateContainer}>
+            <Image
+              source={{
+                uri: post.profileImageUrl || "https://via.placeholder.com/50",
+              }}
+              style={styles.authorProfileImage}
+            />
+            <View style={styles.authorTextContainer}>
+              <View style={styles.authorLocationContainer}>
+                <Text style={styles.author}>{post.nickname}</Text>
+                <Text style={styles.locationDot}>•</Text>
+                <Text style={styles.locationText}>
+                  {post.district || "위치 정보 없음"}
+                </Text>
+              </View>
+            </View>
+          </View>
         </View>
 
-        <View style={styles.divider} />
+        {renderCareInfo()}
+        <Text style={styles.postContent}>{post.content}</Text>
 
+        {post.imageUrls && post.imageUrls.length > 0 && (
+          <View style={styles.imageContainer}>
+            <ScrollView horizontal style={styles.imageGallery}>
+              {post.imageUrls.map((imageUri, index) => (
+                <View key={index} style={styles.imageWrapper}>
+                  <Image
+                    source={{ uri: imageUri }}
+                    style={styles.postImage}
+                    resizeMode="cover"
+                  />
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        <View style={styles.divider} />
         {renderComments()}
       </ScrollView>
 
@@ -309,6 +733,47 @@ const ChildCareDetail = ({ route, navigation }) => {
           <Text style={styles.commentSubmitText}>등록</Text>
         </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={showStatusModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowStatusModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalBackground}
+          activeOpacity={1}
+          onPress={() => setShowStatusModal(false)}
+        >
+          <View style={styles.statusModalContainer}>
+            <Text style={styles.modalTitle}>태그 변경</Text>
+            {["구인중", "구인완료", "예약중"].map((tag) => (
+              <TouchableOpacity
+                key={tag}
+                style={styles.statusOption}
+                onPress={() => {
+                  handleTagChange(tag);
+                  setShowStatusModal(false);
+                }}
+              >
+                <Text style={styles.statusOptionText}>{tag}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => setShowStatusModal(false)}
+            >
+              <Text style={styles.cancelButtonText}>취소</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+      <TouchableOpacity
+        style={styles.optionsButton}
+        onPress={handlePostOptions}
+      >
+        <Icon name="more-vert" size={24} color="#000" />
+      </TouchableOpacity>
     </View>
   );
 };
@@ -327,19 +792,43 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
+  tagAndTimeContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
   tagContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginBottom: 12,
+    gap: 8,
+  },
+  postTime: {
+    fontSize: 12,
+    color: "#666",
   },
   tag: {
-    backgroundColor: "#FFEDAE",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
-    marginRight: 8,
-    marginBottom: 8,
-    fontSize: 14,
+    fontSize: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  urgentPostTag: {
+    backgroundColor: "#ffebee",
+    color: "#f44336",
+  },
+  reservingPostTag: {
+    backgroundColor: "#e8f5e9",
+    color: "#4caf50",
+  },
+  completedPostTag: {
+    backgroundColor: "#fff3e0",
+    color: "#ff9800",
+  },
+  recruitingPostTag: {
+    backgroundColor: "#e3f2fd",
+    color: "#2196f3",
   },
   title: {
     fontSize: 24,
@@ -347,20 +836,45 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   authorInfo: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     marginBottom: 20,
+    marginTop: 12,
     paddingHorizontal: 4,
+  },
+  authorDateContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  authorProfileImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+  },
+  authorTextContainer: {
+    flex: 1,
+  },
+  authorLocationContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  locationDot: {
+    fontSize: 14,
+    color: "#666",
+    marginHorizontal: 8,
+  },
+  locationText: {
+    fontSize: 14,
+    color: "#666",
   },
   author: {
     fontSize: 14,
     color: "#333",
     fontWeight: "bold",
   },
-  date: {
+  authorDate: {
     fontSize: 12,
     color: "#666",
+    marginTop: 2,
   },
   postContent: {
     fontSize: 16,
@@ -439,6 +953,110 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   commentSubmitText: {
+    color: "#333",
+    fontWeight: "bold",
+    fontSize: 14,
+  },
+  optionsButton: {
+    padding: 4,
+  },
+  careInfoContainer: {
+    backgroundColor: "#fBfbfb",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  dateTimeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  dateTimeLabel: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#333",
+    marginRight: 8,
+    width: 80,
+  },
+  dateTimeText: {
+    fontSize: 14,
+    color: "#666",
+    flex: 1,
+  },
+  imageContainer: {
+    marginTop: 16,
+    marginBottom: 20,
+  },
+  imageGallery: {
+    flexDirection: "row",
+  },
+  imageWrapper: {
+    marginRight: 8,
+  },
+  postImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 8,
+  },
+  singlePostImage: {
+    width: 370,
+    height: 330,
+    borderRadius: 8,
+    alignSelf: "center",
+    marginBottom: 20,
+  },
+  changeStatusButton: {
+    backgroundColor: "#FFEDAE",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 8,
+  },
+  changeStatusText: {
+    color: "#333",
+    fontWeight: "bold",
+    fontSize: 14,
+  },
+  modalBackground: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  statusModalContainer: {
+    backgroundColor: "#fff",
+    padding: 16,
+    borderRadius: 8,
+    width: "80%",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 16,
+  },
+  statusOption: {
+    padding: 8,
+    borderWidth: 1,
+    borderColor: "#eee",
+    borderRadius: 4,
+  },
+  marginBottom: 4,
+  statusOptionText: {
+    fontSize: 14,
+    color: "#333",
+  },
+  cancelButton: {
+    backgroundColor: "#FFEDAE",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 8,
+  },
+  cancelButtonText: {
     color: "#333",
     fontWeight: "bold",
     fontSize: 14,

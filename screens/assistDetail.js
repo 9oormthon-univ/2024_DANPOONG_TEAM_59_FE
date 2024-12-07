@@ -35,7 +35,7 @@ const AssistDetail = ({ route, navigation }) => {
       }
 
       const response = await fetch(
-        `http://192.168.61.45:8080/api/support-info/${postId}`,
+        `http://3.34.96.14:8080/api/support-info/${postId}`,
         {
           method: "GET",
           headers: {
@@ -139,7 +139,9 @@ const AssistDetail = ({ route, navigation }) => {
         >
           <ScrollView style={styles.postScrollView}>
             <View style={styles.tagContainer}>
-              <Text style={styles.tag}>{post.tags[0]}</Text>
+              <View style={styles.tagWrapper}>
+                <Text style={styles.tag}>{post.tags[0]}</Text>
+              </View>
             </View>
             <Text style={styles.title}>{post.title}</Text>
             <Text style={styles.content}>{post.content}</Text>
@@ -197,7 +199,9 @@ const AssistDetail = ({ route, navigation }) => {
           <View style={styles.modalContent}>
             <ScrollView style={styles.modalScrollView}>
               <View style={styles.tagContainer}>
-                <Text style={styles.tag}>{post.tags[0]}</Text>
+                <View style={styles.tagWrapper}>
+                  <Text style={styles.tag}>{post.tags[0]}</Text>
+                </View>
               </View>
               <Text style={styles.title}>{post.title}</Text>
               <Text style={styles.content}>{post.content}</Text>
@@ -241,19 +245,23 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   tagContainer: {
+    flexDirection: "row",
+    gap: 4,
+    alignItems: "center",
     marginBottom: 12,
     marginTop: 8,
   },
+  tagWrapper: {
+    borderRadius: 20,
+    overflow: "hidden",
+  },
   tag: {
-    backgroundColor: "#FFEDAE",
-    borderRadius: 15,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginRight: 8,
-    marginBottom: 8,
-    fontSize: 14,
-    color: "#333",
-    alignSelf: "flex-start",
+    backgroundColor: "#FE9F40",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    fontSize: 12,
+    color: "#FFFFFF",
+    textAlign: "center",
   },
   title: {
     fontSize: 24,
